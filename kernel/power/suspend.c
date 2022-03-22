@@ -200,19 +200,30 @@ __setup("mem_sleep_default=", mem_sleep_default_setup);
  * suspend_set_ops - Set the global suspend method table.
  * @ops: Suspend operations to use.
  */
+/* 设置全局的suspend method表 */
 void suspend_set_ops(const struct platform_suspend_ops *ops)
 {
 	lock_system_sleep();
 
+	/* 设置suspend_ops */
 	suspend_ops = ops;
 
+	/* standby方式suspend的参数 */
 	if (valid_state(PM_SUSPEND_STANDBY)) {
+		/* sleep状态包括s2idle、shallow和deep
+           standby方式为shallow
+		*/
 		mem_sleep_states[PM_SUSPEND_STANDBY] = mem_sleep_labels[PM_SUSPEND_STANDBY];
+		/* pm label为freeze、standby和mem
+		   其中standby方式为standby
+		*/
 		pm_states[PM_SUSPEND_STANDBY] = pm_labels[PM_SUSPEND_STANDBY];
 		if (mem_sleep_default == PM_SUSPEND_STANDBY)
 			mem_sleep_current = PM_SUSPEND_STANDBY;
 	}
+	/* mem方式的suspend参数 */
 	if (valid_state(PM_SUSPEND_MEM)) {
+		/* mem方式的状态为deep */
 		mem_sleep_states[PM_SUSPEND_MEM] = mem_sleep_labels[PM_SUSPEND_MEM];
 		if (mem_sleep_default >= PM_SUSPEND_MEM)
 			mem_sleep_current = PM_SUSPEND_MEM;
@@ -230,6 +241,7 @@ EXPORT_SYMBOL_GPL(suspend_set_ops);
  * that in their .valid() callback can use this instead of rolling their own
  * .valid() callback.
  */
+/* 只有suspend2mem才有效 */
 int suspend_valid_only_mem(suspend_state_t state)
 {
 	return state == PM_SUSPEND_MEM;
@@ -602,6 +614,7 @@ static int enter_state(suspend_state_t state)
  * Check if the value of @state represents one of the supported states,
  * execute enter_state() and update system suspend statistics.
  */
+/* syspend系统接口 */
 int pm_suspend(suspend_state_t state)
 {
 	int error;
@@ -609,6 +622,7 @@ int pm_suspend(suspend_state_t state)
 	if (state <= PM_SUSPEND_ON || state >= PM_SUSPEND_MAX)
 		return -EINVAL;
 
+	/* s2idle、shallow和deep */
 	pr_info("suspend entry (%s)\n", mem_sleep_labels[state]);
 	error = enter_state(state);
 	if (error) {

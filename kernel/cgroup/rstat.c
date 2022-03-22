@@ -370,6 +370,7 @@ void __cgroup_account_cputime(struct cgroup *cgrp, u64 delta_exec)
 	struct cgroup_rstat_cpu *rstatc;
 	unsigned long flags;
 
+	/* 更新该cgroup总的运行时间 */
 	rstatc = cgroup_base_stat_cputime_account_begin(cgrp, &flags);
 	rstatc->bstat.cputime.sum_exec_runtime += delta_exec;
 	cgroup_base_stat_cputime_account_end(cgrp, rstatc, flags);

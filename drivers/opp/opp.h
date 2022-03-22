@@ -170,6 +170,7 @@ enum opp_table_access {
  * a device. This structure is not meant to be shared to users as it is
  * meant for book keeping and private to OPP library.
  */
+/* opp表 */
 struct opp_table {
 	struct list_head node, lazy;
 

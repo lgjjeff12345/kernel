@@ -274,6 +274,31 @@ typedef struct pm_message {
  * role of the @runtime_suspend(), @runtime_resume() and @runtime_idle()
  * callbacks in device runtime power management.
  */
+/* 与本domain相关的电源管理操作函数 
+   prepare：
+   complete：
+   suspend：
+   resume：
+   freeze：
+   thaw：
+   poweroff：
+   restore：
+   suspend_late：
+   resume_early：
+   freeze_late：
+   thaw_early：
+   poweroff_late：
+   restore_early：
+   suspend_noirq：
+   resume_noirq：
+   freeze_noirq：
+   thaw_noirq：
+   poweroff_noirq：
+   restore_noirq：
+   runtime_suspend：
+   runtime_resume：
+   runtime_idle：
+*/
 struct dev_pm_ops {
 	int (*prepare)(struct device *dev);
 	void (*complete)(struct device *dev);
@@ -430,6 +455,24 @@ const struct dev_pm_ops __maybe_unused name = { \
  * AUTO_RESUME		Automatic (device needed) runtime resume was
  *			requested by a driver.
  */
+ /* 下面的PM_EVENT_xxx定义为PM core内部使用：
+    ON：不用转换
+    FREEZE：系统将会hibernate，为所有的设备调用prepare()和freeze()
+    SUSPEND：系统将会suspend，为所有设备调用prepare()和suspend()
+    HIBERNATE：Hibernation镜像已经被保存，为所有设备调用prepare()和poweroff()
+    QUIESCE：hibernation镜像的内容已经被恢复到主存中，为所有设备调用prepare()和freeze()
+    RESUME：系统正在resuming，为所有设备调用resume()和complete
+    THAW：Hibernation镜像已经被创建，为所有设备调用thaw()和complete()
+	RESTORE：hibernation镜像中的内容已经被恢复到主存中，为所有设备调用restore()和complete()
+	RECOVER：创建hibernation镜像，或将hibernation镜像恢复回主存失败，为所有设备调用thaw()和
+	         complete()
+	下面的PM_EVENT_xxx定义为内核子系统内部使用，它们不能被PM core调用：
+	USER_SUSPEND：用户空间触发的手动suspend选择
+	USER_RESUME：用户空间触发的手动resume选择
+	REMOTE_WAKEUP：从设备接收到远程唤醒请求
+	AUTO_SUSPEND：由子系统初始化的自动运行时suspend（device idle）
+	AUTO_RESUME：由驱动请求的自动运行时resume（device idle）
+ */
 
 #define PM_EVENT_INVALID	(-1)
 #define PM_EVENT_ON		0x0000
@@ -497,7 +540,14 @@ const struct dev_pm_ops __maybe_unused name = { \
  * RPM_SUSPENDING	Device bus type's ->runtime_suspend() callback is being
  *			executed.
  */
-
+/* 设备的运行时电源管理状态
+   RPM_ACTIVE：设备处于全功能状态，表明设备总线的type's ->runtime_resume()回调
+   已经执行成功
+   RPM_SUSPENDED：设备总线的type's ->runtime_suspend()回调执行成功，设备被认为
+   是suspend状态
+   RPM_RESUMING：设备总线的type's ->runtime_resume()回调正在被执行
+   RPM_SUSPENDING：设备总线的type's ->runtime_suspend()回调正在被执行
+*/
 enum rpm_status {
 	RPM_ACTIVE = 0,
 	RPM_RESUMING,
@@ -519,7 +569,12 @@ enum rpm_status {
  *
  * RPM_REQ_RESUME	Run the device bus type's ->runtime_resume() callback
  */
-
+/* 设备运行时的电源管理请求类型
+   RPM_REQ_IDLE：运行设备总线类型的runtime_idle回调
+   RPM_REQ_SUSPEND：运行设备总线类型的runtime_suspend回调
+   RPM_REQ_AUTOSUSPEND：与RPM_REQ_SUSPEND相同，
+   RPM_REQ_RESUME：运行设备总线类型的runtime_resume回调
+*/
 enum rpm_request {
 	RPM_REQ_NONE = 0,
 	RPM_REQ_IDLE,
@@ -532,6 +587,7 @@ struct wakeup_source;
 struct wake_irq;
 struct pm_domain_data;
 
+/* pm子系统数据 */
 struct pm_subsys_data {
 	spinlock_t lock;
 	unsigned int refcount;
@@ -563,10 +619,15 @@ struct pm_subsys_data {
 #define DPM_FLAG_SMART_SUSPEND		BIT(2)
 #define DPM_FLAG_MAY_SKIP_RESUME	BIT(3)
 
+/* 设备电源管理信息 */
 struct dev_pm_info {
+	/* pm的电源状态消息 */
 	pm_message_t		power_state;
+	/* 是否可以唤醒 */
 	unsigned int		can_wakeup:1;
+	/* 异步挂起 */
 	unsigned int		async_suspend:1;
+	/* 是否处于dpm链表等标志 */
 	bool			in_dpm_list:1;	/* Owned by the PM core */
 	bool			is_prepared:1;	/* Owned by the PM core */
 	bool			is_suspended:1;	/* Ditto */
@@ -575,12 +636,15 @@ struct dev_pm_info {
 	bool			no_pm:1;
 	bool			early_init:1;	/* Owned by the PM core */
 	bool			direct_complete:1;	/* Owned by the PM core */
+	/* 驱动标志 */
 	u32			driver_flags;
 	spinlock_t		lock;
 #ifdef CONFIG_PM_SLEEP
 	struct list_head	entry;
 	struct completion	completion;
+	/* 唤醒源 */
 	struct wakeup_source	*wakeup;
+	/* 唤醒路径 */
 	bool			wakeup_path:1;
 	bool			syscore:1;
 	bool			no_pm_callbacks:1;	/* Owned by the PM core */
@@ -590,10 +654,14 @@ struct dev_pm_info {
 	unsigned int		should_wakeup:1;
 #endif
 #ifdef CONFIG_PM
+	/* suspend定时器 */
 	struct hrtimer		suspend_timer;
+	/* suspend定时器超时时间 */
 	u64			timer_expires;
+	/* 工作队列 */
 	struct work_struct	work;
 	wait_queue_head_t	wait_queue;
+	/* 唤醒中断 */
 	struct wake_irq		*wakeirq;
 	atomic_t		usage_count;
 	atomic_t		child_count;
@@ -641,12 +709,22 @@ extern void dev_pm_put_subsys_data(struct device *dev);
  * hibernation, system resume and during runtime PM transitions instead of
  * subsystem-level and driver-level callbacks.
  */
+/* 设备的pm domain定义
+   power domains提供了在系统suspend，hibernation，resume，以及运行时PM转换时执行
+   的回调，以替代系统级和驱动级的回调
+*/
 struct dev_pm_domain {
+	/* 与本domain相关的电源管理操作函数 */
 	struct dev_pm_ops	ops;
+	/* 当用户需要通过该domain启动设备时调用 */
 	int (*start)(struct device *dev);
+	/* 当需要从该domain移除一个设备时调用 */
 	void (*detach)(struct device *dev, bool power_off);
+	/* 对于bus类型和驱动，在执行probe之前被调用 */
 	int (*activate)(struct device *dev);
+	/* 在驱动probe成功完成后调用 */
 	void (*sync)(struct device *dev);
+	/* 在驱动probe失败或驱动移除时调用 */
 	void (*dismiss)(struct device *dev);
 };
 
@@ -676,7 +754,7 @@ struct dev_pm_domain {
  * about how to quiesce that are specific to the bus or the device's type.
  * (For example, network drivers mark the link state.)  Other details may
  * differ according to the message:
- *
+ *   
  * SUSPEND	Quiesce, enter a low power device state appropriate for
  *		the upcoming system state (such as PCI_D3hot), and enable
  *		wakeup events as appropriate.
@@ -702,6 +780,33 @@ struct dev_pm_domain {
  * well as during system sleep states like PM_SUSPEND_STANDBY.  They may
  * be able to use wakeup events to exit from runtime low-power states,
  * or from system low-power states such as standby or suspend-to-RAM.
+ */
+ /*  ON：驱动再次开始工作，负责硬件事件和软件请求。硬件可能通过一次下电reset，
+     或可能在前一次suspend时保留了驱动resuming时依赖的状态。在大部分平台，
+     对资源的可用性没有限制，如resume期间的时钟
+	 其它转换使用由suspend发送的消息触发。所有这些转换会使驱动静默，因此
+	 IO队列会处于inactive。这通常包含中断和DMA的关闭。这里可能有特定于总线
+	 或设备类型的关于如何停止的规则（如网络驱动标记link状态）。其它的细节
+	 可能根据消息不同而不同。
+
+	 SUSPEND：静默，进入一个与即将到来的system state合适的lower power设备状态。
+	 如（PCI_D3hot），且使能合适的唤醒事件
+
+	 HIBERNATE:进入一个与适合hibernation状态的低功耗设备状态（如ACPI S4），且使能
+	 合适的wakeup事件
+	 
+	 FREEZE：暂停操作，以便保存一致的映像，但不要进入低功率设备状态，也不要发出系
+	 统wakeup事件
+
+	 PRETHAW：像FREEZE一样静止，此外，准备将系统从一个先前FREEZE的快照中恢复。
+	 一些驱动程序将需要重置其硬件状态，而不是保留它，以确保不会将其误认为早期快照
+	 设置的状态
+
+	 最小的低功耗驱动将所有消息视为suspend，且在resume时完全地重新初始化设备。
+
+	 处理更多状态的低功耗驱动可能在运行时像在系统睡眠时一样使用低功耗状态（如
+	 PM_SUSPEND_STANDBY）。它们可能能够使用唤醒事件从运行时低功耗状态，或者系统
+	 低功耗状态（如standby或suspend-to-ram）退出。
  */
 
 #ifdef CONFIG_PM_SLEEP

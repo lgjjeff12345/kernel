@@ -859,6 +859,7 @@ struct backing_dev_info *bdi_get_by_id(u64 id)
 	return bdi;
 }
 
+/* bdi注册流程 */
 int bdi_register_va(struct backing_dev_info *bdi, const char *fmt, va_list args)
 {
 	struct device *dev;
@@ -867,6 +868,7 @@ int bdi_register_va(struct backing_dev_info *bdi, const char *fmt, va_list args)
 	if (bdi->dev)	/* The driver needs to use separate queues per device */
 		return 0;
 
+	/* 设置bdi设备名 */
 	vsnprintf(bdi->dev_name, sizeof(bdi->dev_name), fmt, args);
 	dev = device_create(bdi_class, NULL, MKDEV(0, 0), bdi, bdi->dev_name);
 	if (IS_ERR(dev))
@@ -894,6 +896,7 @@ int bdi_register_va(struct backing_dev_info *bdi, const char *fmt, va_list args)
 	return 0;
 }
 
+/* bdi注入函数 */
 int bdi_register(struct backing_dev_info *bdi, const char *fmt, ...)
 {
 	va_list args;

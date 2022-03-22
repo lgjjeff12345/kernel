@@ -99,6 +99,7 @@ void trace_likely_condition(struct ftrace_likely_data *f, int val, int expect)
 	probe_likely_condition(f, val, expect);
 }
 
+/* 使能分支tracing */
 int enable_branch_tracing(struct trace_array *tr)
 {
 	mutex_lock(&branch_tracing_mutex);
@@ -114,6 +115,7 @@ int enable_branch_tracing(struct trace_array *tr)
 	return 0;
 }
 
+/* 失能分支tracing */
 void disable_branch_tracing(void)
 {
 	mutex_lock(&branch_tracing_mutex);
@@ -127,16 +129,19 @@ void disable_branch_tracing(void)
 	mutex_unlock(&branch_tracing_mutex);
 }
 
+/* 初始化分支tracer */
 static int branch_trace_init(struct trace_array *tr)
 {
 	return enable_branch_tracing(tr);
 }
 
+/* 重置分支tracer */
 static void branch_trace_reset(struct trace_array *tr)
 {
 	disable_branch_tracing();
 }
 
+/* branch trace打印函数 */
 static enum print_line_t trace_branch_print(struct trace_iterator *iter,
 					    int flags, struct trace_event *event)
 {
@@ -144,6 +149,12 @@ static enum print_line_t trace_branch_print(struct trace_iterator *iter,
 
 	trace_assign_type(field, iter->ent);
 
+	/* 打印内容：
+       是否正确
+       函数
+       文件
+       行号
+	*/
 	trace_seq_printf(&iter->seq, "[%s] %s:%s:%d\n",
 			 field->correct ? "  ok  " : " MISS ",
 			 field->func,
@@ -153,6 +164,7 @@ static enum print_line_t trace_branch_print(struct trace_iterator *iter,
 	return trace_handle_return(&iter->seq);
 }
 
+/* 打印分支tracer的头信息 */
 static void branch_print_header(struct seq_file *s)
 {
 	seq_puts(s, "#           TASK-PID    CPU#    TIMESTAMP  CORRECT"
@@ -161,10 +173,12 @@ static void branch_print_header(struct seq_file *s)
 		    "    |\n");
 }
 
+/* trace函数 */
 static struct trace_event_functions trace_branch_funcs = {
 	.trace		= trace_branch_print,
 };
 
+/* trace事件 */
 static struct trace_event trace_branch_event = {
 	.type		= TRACE_BRANCH,
 	.funcs		= &trace_branch_funcs,
@@ -185,6 +199,7 @@ __init static int init_branch_tracer(void)
 {
 	int ret;
 
+	/* 注册trace事件 */
 	ret = register_trace_event(&trace_branch_event);
 	if (!ret) {
 		printk(KERN_WARNING "Warning: could not register "

@@ -4,6 +4,7 @@
  */
 #include "sched.h"
 
+/* 初始化等待队列的链表头 */
 void __init_swait_queue_head(struct swait_queue_head *q, const char *name,
 			     struct lock_class_key *key)
 {
@@ -26,8 +27,11 @@ void swake_up_locked(struct swait_queue_head *q)
 	if (list_empty(&q->task_list))
 		return;
 
+	/* 获取task链表上的第一个元素 */
 	curr = list_first_entry(&q->task_list, typeof(*curr), task_list);
+	/* 唤醒该线程 */
 	wake_up_process(curr->task);
+	/* 从task list 中删除该元素*/
 	list_del_init(&curr->task_list);
 }
 EXPORT_SYMBOL(swake_up_locked);
@@ -39,12 +43,16 @@ EXPORT_SYMBOL(swake_up_locked);
  * It is intentionally different from swake_up_all() to allow usage from
  * hard interrupt context and interrupt disabled regions.
  */
+/* 唤醒task_list上的所有线程
+   该接口只暴露给completions，且不能被general代码使用
+*/
 void swake_up_all_locked(struct swait_queue_head *q)
 {
 	while (!list_empty(&q->task_list))
 		swake_up_locked(q);
 }
 
+/* 唤醒等待队列上的一个线程 */
 void swake_up_one(struct swait_queue_head *q)
 {
 	unsigned long flags;
@@ -59,6 +67,7 @@ EXPORT_SYMBOL(swake_up_one);
  * Does not allow usage from IRQ disabled, since we must be able to
  * release IRQs to guarantee bounded hold time.
  */
+/* 唤醒所有等待的线程 */
 void swake_up_all(struct swait_queue_head *q)
 {
 	struct swait_queue *curr;
@@ -82,6 +91,7 @@ void swake_up_all(struct swait_queue_head *q)
 }
 EXPORT_SYMBOL(swake_up_all);
 
+/* 准备等待，将当前线程加入等待任务链表中 */
 void __prepare_to_swait(struct swait_queue_head *q, struct swait_queue *wait)
 {
 	wait->task = current;
@@ -89,6 +99,7 @@ void __prepare_to_swait(struct swait_queue_head *q, struct swait_queue *wait)
 		list_add_tail(&wait->task_list, &q->task_list);
 }
 
+/* 将当前线程加入等待任务链表中，并将当前任务设置为给定状态 */
 void prepare_to_swait_exclusive(struct swait_queue_head *q, struct swait_queue *wait, int state)
 {
 	unsigned long flags;
@@ -100,6 +111,7 @@ void prepare_to_swait_exclusive(struct swait_queue_head *q, struct swait_queue *
 }
 EXPORT_SYMBOL(prepare_to_swait_exclusive);
 
+/* 准备等待事件 */
 long prepare_to_swait_event(struct swait_queue_head *q, struct swait_queue *wait, int state)
 {
 	unsigned long flags;
@@ -123,13 +135,16 @@ long prepare_to_swait_event(struct swait_queue_head *q, struct swait_queue *wait
 }
 EXPORT_SYMBOL(prepare_to_swait_event);
 
+/* 完成等待 */
 void __finish_swait(struct swait_queue_head *q, struct swait_queue *wait)
 {
+	/* 将当前任务设置为TASK_RUNNING，并将wait节点从等待队列中删除 */
 	__set_current_state(TASK_RUNNING);
 	if (!list_empty(&wait->task_list))
 		list_del_init(&wait->task_list);
 }
 
+/* 完成等待 */
 void finish_swait(struct swait_queue_head *q, struct swait_queue *wait)
 {
 	unsigned long flags;

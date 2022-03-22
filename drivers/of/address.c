@@ -579,11 +579,13 @@ u64 of_translate_address(struct device_node *dev, const __be32 *in_addr)
 }
 EXPORT_SYMBOL(of_translate_address);
 
+/* 获取该设备的dma父设备 */
 static struct device_node *__of_get_dma_parent(const struct device_node *np)
 {
 	struct of_phandle_args args;
 	int ret, index;
 
+	/* 读取interconnect-names属性，判断该属性的值是否为dma-mem */
 	index = of_property_match_string(np, "interconnect-names", "dma-mem");
 	if (index < 0)
 		return of_get_parent(np);
@@ -597,6 +599,7 @@ static struct device_node *__of_get_dma_parent(const struct device_node *np)
 	return of_node_get(args.np);
 }
 
+/* 获取其dma parent节点 */
 static struct device_node *of_get_next_dma_parent(struct device_node *np)
 {
 	struct device_node *parent;
@@ -855,13 +858,16 @@ EXPORT_SYMBOL_GPL(of_address_to_resource);
  *
  * Returns a pointer to the mapped memory
  */
+/* 为一个给定的设备节点，映射内存IO */
 void __iomem *of_iomap(struct device_node *np, int index)
 {
 	struct resource res;
 
+	/* 查找该节点对应index的资源 */
 	if (of_address_to_resource(np, index, &res))
 		return NULL;
 
+	/* 映射资源 */
 	if (res.flags & IORESOURCE_MEM_NONPOSTED)
 		return ioremap_np(res.start, resource_size(&res));
 	else
@@ -1047,6 +1053,7 @@ phys_addr_t __init of_dma_get_max_cpu_address(struct device_node *np)
  * for this device in the DT, or if DMA is coherent by
  * default for OF devices on the current platform.
  */
+/* 检查该设备是否为dma一致性的 */
 bool of_dma_is_coherent(struct device_node *np)
 {
 	struct device_node *node;
@@ -1057,10 +1064,12 @@ bool of_dma_is_coherent(struct device_node *np)
 	node = of_node_get(np);
 
 	while (node) {
+		/* 获取该设备的dma-coherent属性 */
 		if (of_property_read_bool(node, "dma-coherent")) {
 			of_node_put(node);
 			return true;
 		}
+		/* 若未获取，则从其下一个dma parent中获取 */
 		node = of_get_next_dma_parent(node);
 	}
 	of_node_put(node);

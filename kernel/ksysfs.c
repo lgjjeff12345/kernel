@@ -240,11 +240,13 @@ static int __init ksysfs_init(void)
 {
 	int error;
 
+	/* 在sysfs下创建kernel节点 */
 	kernel_kobj = kobject_create_and_add("kernel", NULL);
 	if (!kernel_kobj) {
 		error = -ENOMEM;
 		goto exit;
 	}
+	/* 创建kernel节点的属性 */
 	error = sysfs_create_group(kernel_kobj, &kernel_attr_group);
 	if (error)
 		goto kset_exit;

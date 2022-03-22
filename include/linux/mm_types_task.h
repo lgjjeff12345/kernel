@@ -31,6 +31,7 @@
 #define VMACACHE_SIZE (1U << VMACACHE_BITS)
 #define VMACACHE_MASK (VMACACHE_SIZE - 1)
 
+/* vma cache结构体 */
 struct vmacache {
 	u64 seqnum;
 	struct vm_area_struct *vmas[VMACACHE_SIZE];
@@ -40,6 +41,13 @@ struct vmacache {
  * When updating this, please also update struct resident_page_types[] in
  * kernel/fork.c
  */
+/*
+  rss的类型
+  MM_FILEPAGES：resident文件映射页
+  MM_ANONPAGES：resident匿名页
+  MM_SWAPENTS：匿名swap entries
+  MM_SHMEMPAGES：Resident共享内存页
+*/
 enum {
 	MM_FILEPAGES,	/* Resident file mapping pages */
 	MM_ANONPAGES,	/* Resident anonymous pages */
@@ -57,6 +65,7 @@ struct task_rss_stat {
 };
 #endif /* USE_SPLIT_PTE_PTLOCKS */
 
+/* rss的统计信息 */
 struct mm_rss_stat {
 	atomic_long_t count[NR_MM_COUNTERS];
 };

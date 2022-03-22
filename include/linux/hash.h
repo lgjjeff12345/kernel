@@ -65,6 +65,7 @@ static inline u32 __hash_32_generic(u32 val)
 #ifndef HAVE_ARCH_HASH_32
 #define hash_32 hash_32_generic
 #endif
+/* 计算val的hash值，并取该hash值的高7bit */
 static inline u32 hash_32_generic(u32 val, unsigned int bits)
 {
 	/* High bits are more random, so use them. */

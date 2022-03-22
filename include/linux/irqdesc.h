@@ -61,6 +61,7 @@ struct irq_desc {
 	unsigned int		status_use_accessors;
 	unsigned int		core_internal_state__do_not_mess_with_it;
 	unsigned int		depth;		/* nested irq disables */
+	/* 嵌套的唤醒使能 */
 	unsigned int		wake_depth;	/* nested wake enables */
 	unsigned int		tot_count;
 	unsigned int		irq_count;	/* For detecting broken IRQs */

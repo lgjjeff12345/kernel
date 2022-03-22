@@ -381,11 +381,13 @@ static inline bool irqd_affinity_is_managed(struct irq_data *d)
 	return __irqd_to_state(d) & IRQD_AFFINITY_MANAGED;
 }
 
+/* 中断是否被激活 */
 static inline bool irqd_is_activated(struct irq_data *d)
 {
 	return __irqd_to_state(d) & IRQD_ACTIVATED;
 }
 
+/* 设置中断激活 */
 static inline void irqd_set_activated(struct irq_data *d)
 {
 	__irqd_to_state(d) |= IRQD_ACTIVATED;
@@ -396,6 +398,7 @@ static inline void irqd_clr_activated(struct irq_data *d)
 	__irqd_to_state(d) &= ~IRQD_ACTIVATED;
 }
 
+/* irq是否被启动 */
 static inline bool irqd_is_started(struct irq_data *d)
 {
 	return __irqd_to_state(d) & IRQD_IRQ_STARTED;

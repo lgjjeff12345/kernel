@@ -25,8 +25,10 @@
  * For the hotplug case we keep the task structs around and reuse
  * them.
  */
+/* idle线程是percpu变量 */
 static DEFINE_PER_CPU(struct task_struct *, idle_threads);
 
+/* 获取该线程对应idle线程的task_struct */
 struct task_struct *idle_thread_get(unsigned int cpu)
 {
 	struct task_struct *tsk = per_cpu(idle_threads, cpu);
@@ -36,6 +38,9 @@ struct task_struct *idle_thread_get(unsigned int cpu)
 	return tsk;
 }
 
+/* 为boot cpu设置idle线程，该函数由sched_init调用
+   将current设置为当前cpu的idle线程 
+*/
 void __init idle_thread_set_boot_cpu(void)
 {
 	per_cpu(idle_threads, smp_processor_id()) = current;
@@ -47,6 +52,7 @@ void __init idle_thread_set_boot_cpu(void)
  *
  * Creates the thread if it does not exist.
  */
+/* 初始化给定cpu的idle进程 */
 static __always_inline void idle_init(unsigned int cpu)
 {
 	struct task_struct *tsk = per_cpu(idle_threads, cpu);
@@ -63,6 +69,7 @@ static __always_inline void idle_init(unsigned int cpu)
 /**
  * idle_threads_init - Initialize idle threads for all cpus
  */
+/* 为每个非boot cpu初始化idle线程 */
 void __init idle_threads_init(void)
 {
 	unsigned int cpu, boot_cpu;
@@ -103,6 +110,7 @@ enum {
  *
  * Returns 1 when the thread should exit, 0 otherwise.
  */
+/* percpu线程的执行函数 */
 static int smpboot_thread_fn(void *data)
 {
 	struct smpboot_thread_data *td = data;
@@ -111,24 +119,31 @@ static int smpboot_thread_fn(void *data)
 	while (1) {
 		set_current_state(TASK_INTERRUPTIBLE);
 		preempt_disable();
+		/* 线程stop处理 */
 		if (kthread_should_stop()) {
+			/* 将线程状态设置为TASK_RUNNING */
 			__set_current_state(TASK_RUNNING);
 			preempt_enable();
 			/* cleanup must mirror setup */
+			/* 调用其cleanup回调，并退出循环 */
 			if (ht->cleanup && td->status != HP_THREAD_NONE)
 				ht->cleanup(td->cpu, cpu_online(td->cpu));
 			kfree(td);
 			return 0;
 		}
 
+		/* 线程park处理 */
 		if (kthread_should_park()) {
+			/* 将线程状态设置为TASK_RUNNING */
 			__set_current_state(TASK_RUNNING);
 			preempt_enable();
+			/* 调用其park回调，并设置td的状态 */
 			if (ht->park && td->status == HP_THREAD_ACTIVE) {
 				BUG_ON(td->cpu != smp_processor_id());
 				ht->park(td->cpu);
 				td->status = HP_THREAD_PARKED;
 			}
+			/* 调用kthread的通用park接口 */
 			kthread_parkme();
 			/* We might have been woken for stop */
 			continue;
@@ -166,6 +181,7 @@ static int smpboot_thread_fn(void *data)
 	}
 }
 
+/* 创建一个与cpu绑定的线程 */
 static int
 __smpboot_create_thread(struct smp_hotplug_thread *ht, unsigned int cpu)
 {
@@ -181,20 +197,25 @@ __smpboot_create_thread(struct smp_hotplug_thread *ht, unsigned int cpu)
 	td->cpu = cpu;
 	td->ht = ht;
 
+	/* 创建与cpu绑定的内核线程 */
 	tsk = kthread_create_on_cpu(smpboot_thread_fn, td, cpu,
 				    ht->thread_comm);
 	if (IS_ERR(tsk)) {
 		kfree(td);
 		return PTR_ERR(tsk);
 	}
+	/* 设置kthread的per cpu参数 */
 	kthread_set_per_cpu(tsk, cpu);
 	/*
 	 * Park the thread so that it could start right on the CPU
 	 * when it is available.
 	 */
+	/* park该线程 */
 	kthread_park(tsk);
 	get_task_struct(tsk);
+	/* 将task struct指针保存到per cpu变量中 */
 	*per_cpu_ptr(ht->store, cpu) = tsk;
+	/* 若其含有create回调，则调用之 */
 	if (ht->create) {
 		/*
 		 * Make sure that the task has actually scheduled out
@@ -210,12 +231,14 @@ __smpboot_create_thread(struct smp_hotplug_thread *ht, unsigned int cpu)
 	return 0;
 }
 
+/* 创建与特定cpu绑定的线程，用于cpu启动时调用 */
 int smpboot_create_threads(unsigned int cpu)
 {
 	struct smp_hotplug_thread *cur;
 	int ret = 0;
 
 	mutex_lock(&smpboot_threads_lock);
+	/* 为hotplug_threads链表上的每个节点，创建一个与cpu绑定的线程 */
 	list_for_each_entry(cur, &hotplug_threads, list) {
 		ret = __smpboot_create_thread(cur, cpu);
 		if (ret)
@@ -225,14 +248,17 @@ int smpboot_create_threads(unsigned int cpu)
 	return ret;
 }
 
+/* unpark特定cpu上的线程 */
 static void smpboot_unpark_thread(struct smp_hotplug_thread *ht, unsigned int cpu)
 {
 	struct task_struct *tsk = *per_cpu_ptr(ht->store, cpu);
 
+	/* 如果设置了selfparking标志，则不执行unpark */
 	if (!ht->selfparking)
 		kthread_unpark(tsk);
 }
 
+/* unpark线程 */
 int smpboot_unpark_threads(unsigned int cpu)
 {
 	struct smp_hotplug_thread *cur;
@@ -244,34 +270,42 @@ int smpboot_unpark_threads(unsigned int cpu)
 	return 0;
 }
 
+/* park一个percpu线程 */
 static void smpboot_park_thread(struct smp_hotplug_thread *ht, unsigned int cpu)
 {
+	/* 获取该cpu对应的task结构体 */
 	struct task_struct *tsk = *per_cpu_ptr(ht->store, cpu);
 
+	/* 设置了selfparking标志的线程，不是由park函数执行park操作 */
 	if (tsk && !ht->selfparking)
 		kthread_park(tsk);
 }
 
+/* park给定cpu的线程 */
 int smpboot_park_threads(unsigned int cpu)
 {
 	struct smp_hotplug_thread *cur;
 
 	mutex_lock(&smpboot_threads_lock);
+	/* 遍历所有hotplug_threads线程组，并分别park对应cpu的线程 */
 	list_for_each_entry_reverse(cur, &hotplug_threads, list)
 		smpboot_park_thread(cur, cpu);
 	mutex_unlock(&smpboot_threads_lock);
 	return 0;
 }
 
+/* 销毁线程 */
 static void smpboot_destroy_threads(struct smp_hotplug_thread *ht)
 {
 	unsigned int cpu;
 
 	/* We need to destroy also the parked threads of offline cpus */
 	for_each_possible_cpu(cpu) {
+		/* 获取该线程对应的task结构体 */
 		struct task_struct *tsk = *per_cpu_ptr(ht->store, cpu);
 
 		if (tsk) {
+			/* 停止线程 */
 			kthread_stop(tsk);
 			put_task_struct(tsk);
 			*per_cpu_ptr(ht->store, cpu) = NULL;
@@ -286,6 +320,7 @@ static void smpboot_destroy_threads(struct smp_hotplug_thread *ht)
  *
  * Creates and starts the threads on all online cpus.
  */
+/* 注册一个与hotplug相关的percpu线程 */
 int smpboot_register_percpu_thread(struct smp_hotplug_thread *plug_thread)
 {
 	unsigned int cpu;
@@ -293,14 +328,17 @@ int smpboot_register_percpu_thread(struct smp_hotplug_thread *plug_thread)
 
 	get_online_cpus();
 	mutex_lock(&smpboot_threads_lock);
+	/* 遍历所有的online cpu */
 	for_each_online_cpu(cpu) {
 		ret = __smpboot_create_thread(plug_thread, cpu);
 		if (ret) {
 			smpboot_destroy_threads(plug_thread);
 			goto out;
 		}
+		/* unpark该线程 */
 		smpboot_unpark_thread(plug_thread, cpu);
 	}
+	/* 将其添加到hotplug_threads链表中 */
 	list_add(&plug_thread->list, &hotplug_threads);
 out:
 	mutex_unlock(&smpboot_threads_lock);
@@ -315,11 +353,14 @@ EXPORT_SYMBOL_GPL(smpboot_register_percpu_thread);
  *
  * Stops all threads on all possible cpus.
  */
+/* 注销percpu线程 */
 void smpboot_unregister_percpu_thread(struct smp_hotplug_thread *plug_thread)
 {
 	get_online_cpus();
 	mutex_lock(&smpboot_threads_lock);
+	/* 从全局的hotplug_threads线程链表中删除该线程 */
 	list_del(&plug_thread->list);
+	/* 销毁percpu线程 */
 	smpboot_destroy_threads(plug_thread);
 	mutex_unlock(&smpboot_threads_lock);
 	put_online_cpus();
@@ -332,6 +373,7 @@ static DEFINE_PER_CPU(atomic_t, cpu_hotplug_state) = ATOMIC_INIT(CPU_POST_DEAD);
  * Called to poll specified CPU's state, for example, when waiting for
  * a CPU to come online.
  */
+/* 获取cpu的hotplug状态 */
 int cpu_report_state(int cpu)
 {
 	return atomic_read(&per_cpu(cpu_hotplug_state, cpu));
@@ -349,18 +391,22 @@ int cpu_report_state(int cpu)
  * Note that it is permissible to omit this call entirely, as is
  * done in architectures that do no CPU-hotplug error checking.
  */
+/* cpu启动前检查 */
 int cpu_check_up_prepare(int cpu)
 {
+	/* 若未使能cpu的hotplug，则将其状态设置为CPU_UP_PREPARE */
 	if (!IS_ENABLED(CONFIG_HOTPLUG_CPU)) {
 		atomic_set(&per_cpu(cpu_hotplug_state, cpu), CPU_UP_PREPARE);
 		return 0;
 	}
 
+	/* 获取cpu hotplug状态 */
 	switch (atomic_read(&per_cpu(cpu_hotplug_state, cpu))) {
 
 	case CPU_POST_DEAD:
 
 		/* The CPU died properly, so just start it up again. */
+		/* 正常died，可以直接启动，将其状态设置为CPU_UP_PREPARE */
 		atomic_set(&per_cpu(cpu_hotplug_state, cpu), CPU_UP_PREPARE);
 		return 0;
 
@@ -377,6 +423,7 @@ int cpu_check_up_prepare(int cpu)
 		 * offline, with no post-death manipulation required from
 		 * a surviving CPU.
 		 */
+		/* death超时，通知调用者，以使其能自由处理 */
 		return -EBUSY;
 
 	case CPU_BROKEN:
@@ -390,6 +437,7 @@ int cpu_check_up_prepare(int cpu)
 		 * immediately online that same CPU.  Trying again later
 		 * might return -EBUSY above, hence -EAGAIN.
 		 */
+		/* dead超时 */
 		return -EAGAIN;
 
 	default:
@@ -405,6 +453,7 @@ int cpu_check_up_prepare(int cpu)
  * Note that it is permissible to omit this call entirely, as is
  * done in architectures that do no CPU-hotplug error checking.
  */
+/* 将cpu的hotplug状态设置为CPU_ONLINE */
 void cpu_set_state_online(int cpu)
 {
 	(void)atomic_xchg(&per_cpu(cpu_hotplug_state, cpu), CPU_ONLINE);
@@ -415,6 +464,7 @@ void cpu_set_state_online(int cpu)
 /*
  * Wait for the specified CPU to exit the idle loop and die.
  */
+/* 等待cpu退出idle状态并die */
 bool cpu_wait_death(unsigned int cpu, int seconds)
 {
 	int jf_left = seconds * HZ;
@@ -430,6 +480,7 @@ bool cpu_wait_death(unsigned int cpu, int seconds)
 	udelay(5);
 
 	/* But if the outgoing CPU dawdles, wait increasingly long times. */
+	/* 等待cpu hotplug状态切换为CPU_DEAD */
 	while (atomic_read(&per_cpu(cpu_hotplug_state, cpu)) != CPU_DEAD) {
 		schedule_timeout_uninterruptible(sleep_jf);
 		jf_left -= sleep_jf;
@@ -441,10 +492,12 @@ update_state:
 	oldstate = atomic_read(&per_cpu(cpu_hotplug_state, cpu));
 	if (oldstate == CPU_DEAD) {
 		/* Outgoing CPU died normally, update state. */
+		/* 等待成功，将cpu设置为CPU_POST_DEAD */
 		smp_mb(); /* atomic_read() before update. */
 		atomic_set(&per_cpu(cpu_hotplug_state, cpu), CPU_POST_DEAD);
 	} else {
 		/* Outgoing CPU still hasn't died, set state accordingly. */
+		/* 将状态设置为CPU_BROKEN */
 		if (atomic_cmpxchg(&per_cpu(cpu_hotplug_state, cpu),
 				   oldstate, CPU_BROKEN) != oldstate)
 			goto update_state;

@@ -2414,6 +2414,7 @@ static inline void init_idle_pids(struct task_struct *idle)
 	}
 }
 
+/* 为给定cpu fork一个idle进程 */
 struct task_struct * __init fork_idle(int cpu)
 {
 	struct task_struct *task;
@@ -2421,6 +2422,7 @@ struct task_struct * __init fork_idle(int cpu)
 		.flags = CLONE_VM,
 	};
 
+	/* copy一份init进程的上下文作为idle进程的上下文，但不会启动该进程 */
 	task = copy_process(&init_struct_pid, 0, cpu_to_node(cpu), &args);
 	if (!IS_ERR(task)) {
 		init_idle_pids(task);
@@ -2548,6 +2550,7 @@ pid_t kernel_clone(struct kernel_clone_args *args)
 /*
  * Create a kernel thread.
  */
+/* 创建一个内核线程 */
 pid_t kernel_thread(int (*fn)(void *), void *arg, unsigned long flags)
 {
 	struct kernel_clone_args args = {

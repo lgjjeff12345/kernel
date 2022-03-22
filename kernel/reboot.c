@@ -22,7 +22,7 @@
 /*
  * this indicates whether you can reboot with ctrl-alt-del: the default is yes
  */
-
+/* 是否可用C_A_D重启 */
 int C_A_D = 1;
 struct pid *cad_pid;
 EXPORT_SYMBOL(cad_pid);
@@ -32,7 +32,9 @@ EXPORT_SYMBOL(cad_pid);
 #else
 #define DEFAULT_REBOOT_MODE
 #endif
+/* 启动模式 */
 enum reboot_mode reboot_mode DEFAULT_REBOOT_MODE;
+/* panic启动模式 */
 enum reboot_mode panic_reboot_mode = REBOOT_UNDEFINED;
 
 /*
@@ -62,18 +64,30 @@ EXPORT_SYMBOL_GPL(pm_power_off_prepare);
  *	trouble so this is our best effort to reboot.  This is
  *	safe to call in interrupt context.
  */
+/* 紧急重启
+   重启系统时不关闭任何硬件或持有任何锁。在我们认为系统出问题，
+   且最好的解决方案是启动时调用。它可以在中断上下文调用
+
+*/
 void emergency_restart(void)
 {
+	/* dump msg buffer中的log信息 */
 	kmsg_dump(KMSG_DUMP_EMERG);
+	/* 调用架构相关的紧急重启接口 */
 	machine_emergency_restart();
 }
 EXPORT_SYMBOL_GPL(emergency_restart);
 
+/* restart准备流程 */
 void kernel_restart_prepare(char *cmd)
 {
+	/* 调用各模块注册到reboot_notifier_list通知链上的通知 */
 	blocking_notifier_call_chain(&reboot_notifier_list, SYS_RESTART, cmd);
+	/* 设置system_state为SYSTEM_RESTART */
 	system_state = SYSTEM_RESTART;
+	/* 关闭usermodehelper功能 */
 	usermodehelper_disable();
+	/* 关闭所有的设备 */
 	device_shutdown();
 }
 
@@ -86,6 +100,8 @@ void kernel_restart_prepare(char *cmd)
  *
  *	Currently always returns zero, as blocking_notifier_chain_register()
  *	always returns zero.
+ */
+ /* 注册一个reboot时将被调用的通知函数
  */
 int register_reboot_notifier(struct notifier_block *nb)
 {
@@ -102,17 +118,20 @@ EXPORT_SYMBOL(register_reboot_notifier);
  *
  *	Returns zero on success, or %-ENOENT on failure.
  */
+/* 注销一个reboot notifier通知 */
 int unregister_reboot_notifier(struct notifier_block *nb)
 {
 	return blocking_notifier_chain_unregister(&reboot_notifier_list, nb);
 }
 EXPORT_SYMBOL(unregister_reboot_notifier);
 
+/* 注销reboot通知 */
 static void devm_unregister_reboot_notifier(struct device *dev, void *res)
 {
 	WARN_ON(unregister_reboot_notifier(*(struct notifier_block **)res));
 }
 
+/* 注册reboot通知 */
 int devm_register_reboot_notifier(struct device *dev, struct notifier_block *nb)
 {
 	struct notifier_block **rcnb;
@@ -139,6 +158,7 @@ EXPORT_SYMBOL(devm_register_reboot_notifier);
  *	Notifier list for kernel code which wants to be called
  *	to restart the system.
  */
+/* 内核重启系统时调用的notifier链表 */
 static ATOMIC_NOTIFIER_HEAD(restart_handler_list);
 
 /**
@@ -179,6 +199,8 @@ static ATOMIC_NOTIFIER_HEAD(restart_handler_list);
  *	Currently always returns zero, as atomic_notifier_chain_register()
  *	always returns zero.
  */
+/* 注册系统reset时调用的函数
+*/
 int register_restart_handler(struct notifier_block *nb)
 {
 	return atomic_notifier_chain_register(&restart_handler_list, nb);
@@ -194,6 +216,7 @@ EXPORT_SYMBOL(register_restart_handler);
  *
  *	Returns zero on success, or %-ENOENT on failure.
  */
+/* 注销restart通知链 */
 int unregister_restart_handler(struct notifier_block *nb)
 {
 	return atomic_notifier_chain_unregister(&restart_handler_list, nb);
@@ -211,26 +234,32 @@ EXPORT_SYMBOL(unregister_restart_handler);
  *	Restarts the system immediately if a restart handler function has been
  *	registered. Otherwise does nothing.
  */
+/* 执行内核的restart处理调用链 */
 void do_kernel_restart(char *cmd)
 {
 	atomic_notifier_call_chain(&restart_handler_list, reboot_mode, cmd);
 }
 
+/* 将当前线程迁移到reboot cpu上 */
 void migrate_to_reboot_cpu(void)
 {
 	/* The boot cpu is always logical cpu 0 */
 	int cpu = reboot_cpu;
 
+	/* 关闭cpu hp */
 	cpu_hotplug_disable();
 
 	/* Make certain the cpu I'm about to reboot on is online */
+	/* 若boot cpu不在线，则指定一个cpu */
 	if (!cpu_online(cpu))
 		cpu = cpumask_first(cpu_online_mask);
 
 	/* Prevent races with other tasks migrating this task */
+	/* 设置当前线程的PF_NO_SETAFFINITY标志，以避免竞态 */
 	current->flags |= PF_NO_SETAFFINITY;
 
 	/* Make certain I only run on the appropriate processor */
+	/* 将当前线程migrate到指定cpu */
 	set_cpus_allowed_ptr(current, cpumask_of(cpu));
 }
 
@@ -242,25 +271,33 @@ void migrate_to_reboot_cpu(void)
  *	Shutdown everything and perform a clean reboot.
  *	This is not safe to call in interrupt context.
  */
+/* 重启系统 */
 void kernel_restart(char *cmd)
 {
+	/* restart准备流程 */
 	kernel_restart_prepare(cmd);
+	/* 将当前线程迁移到reboot cpu上 */
 	migrate_to_reboot_cpu();
+	/* 执行所有注册到syscore的shutdown回调 */
 	syscore_shutdown();
 	if (!cmd)
 		pr_emerg("Restarting system\n");
 	else
 		pr_emerg("Restarting system with command '%s'\n", cmd);
 	kmsg_dump(KMSG_DUMP_SHUTDOWN);
+	/* 调用架构相关的restart接口 */
 	machine_restart(cmd);
 }
 EXPORT_SYMBOL_GPL(kernel_restart);
 
+/* 准备下电 */
 static void kernel_shutdown_prepare(enum system_states state)
 {
+	/* 调用reboot的通知 */
 	blocking_notifier_call_chain(&reboot_notifier_list,
 		(state == SYSTEM_HALT) ? SYS_HALT : SYS_POWER_OFF, NULL);
 	system_state = state;
+	/* 关闭umh和设备 */
 	usermodehelper_disable();
 	device_shutdown();
 }
@@ -271,11 +308,15 @@ static void kernel_shutdown_prepare(enum system_states state)
  */
 void kernel_halt(void)
 {
+	/* 准备下电 */
 	kernel_shutdown_prepare(SYSTEM_HALT);
+	/* 将当前线程迁移到reboot cpu上 */
 	migrate_to_reboot_cpu();
+	/* 执行所有注册到syscore的shutdown回调 */
 	syscore_shutdown();
 	pr_emerg("System halted\n");
 	kmsg_dump(KMSG_DUMP_SHUTDOWN);
+	/* 执行架构相关的halt函数 */
 	machine_halt();
 }
 EXPORT_SYMBOL_GPL(kernel_halt);
@@ -285,15 +326,21 @@ EXPORT_SYMBOL_GPL(kernel_halt);
  *
  *	Shutdown everything and perform a clean system power_off.
  */
+/* 将系统下电 */
 void kernel_power_off(void)
 {
+	/* 准备下电 */
 	kernel_shutdown_prepare(SYSTEM_POWER_OFF);
+	/* 准备poweroff */
 	if (pm_power_off_prepare)
 		pm_power_off_prepare();
+	/* 将当前线程迁移到reboot cpu上 */
 	migrate_to_reboot_cpu();
+	/* 执行所有注册到syscore的shutdown回调 */
 	syscore_shutdown();
 	pr_emerg("Power down\n");
 	kmsg_dump(KMSG_DUMP_SHUTDOWN);
+	/* 调用架构相关的power off接口 */
 	machine_power_off();
 }
 EXPORT_SYMBOL_GPL(kernel_power_off);
@@ -420,6 +467,7 @@ void ctrl_alt_del(void)
 char poweroff_cmd[POWEROFF_CMD_PATH_LEN] = "/sbin/poweroff";
 static const char reboot_cmd[] = "/sbin/reboot";
 
+/* 运行命令 */
 static int run_cmd(const char *cmd)
 {
 	char **argv;
@@ -429,6 +477,7 @@ static int run_cmd(const char *cmd)
 		NULL
 	};
 	int ret;
+	/* 调用umh模块，执行用户态命令 */
 	argv = argv_split(GFP_KERNEL, cmd, NULL);
 	if (argv) {
 		ret = call_usermodehelper(argv[0], argv, envp, UMH_WAIT_EXEC);
@@ -444,6 +493,7 @@ static int __orderly_reboot(void)
 {
 	int ret;
 
+	/* 执行reboot命令 */
 	ret = run_cmd(reboot_cmd);
 
 	if (ret) {
@@ -455,12 +505,15 @@ static int __orderly_reboot(void)
 	return ret;
 }
 
+/* orderly下电流程 */
 static int __orderly_poweroff(bool force)
 {
 	int ret;
 
+	/* 运行下电命令 */
 	ret = run_cmd(poweroff_cmd);
 
+	/* 命令执行失败， */
 	if (ret && force) {
 		pr_warn("Failed to start orderly shutdown: forcing the issue\n");
 
@@ -469,7 +522,9 @@ static int __orderly_poweroff(bool force)
 		 * poweroff asap.  Or not even bother syncing if we're doing an
 		 * emergency shutdown?
 		 */
+		/* 同步inode、fs和bdev数据 */
 		emergency_sync();
+		/* 将系统下电 */
 		kernel_power_off();
 	}
 
@@ -478,6 +533,7 @@ static int __orderly_poweroff(bool force)
 
 static bool poweroff_force;
 
+/* poweroff work函数 */
 static void poweroff_work_func(struct work_struct *work)
 {
 	__orderly_poweroff(poweroff_force);
@@ -492,6 +548,9 @@ static DECLARE_WORK(poweroff_work, poweroff_work_func);
  * This may be called from any context to trigger a system shutdown.
  * If the orderly shutdown fails, it will force an immediate shutdown.
  */
+/* 触发一个orderly系统关机
+   force：若命令执行错误，强制下电
+*/
 void orderly_poweroff(bool force)
 {
 	if (force) /* do not override the pending "true" */
@@ -526,6 +585,7 @@ EXPORT_SYMBOL_GPL(orderly_reboot);
  * This function is called in very critical situations to force
  * a kernel poweroff after a configurable timeout value.
  */
+/* 紧急poweroff流程 */
 static void hw_failure_emergency_poweroff_func(struct work_struct *work)
 {
 	/*
@@ -537,12 +597,14 @@ static void hw_failure_emergency_poweroff_func(struct work_struct *work)
 	 * if populated
 	 */
 	pr_emerg("Hardware protection timed-out. Trying forced poweroff\n");
+	/* 直接将系统下电 */
 	kernel_power_off();
 
 	/*
 	 * Worst of the worst case trigger emergency restart
 	 */
 	pr_emerg("Hardware protection shutdown failed. Trying emergency restart\n");
+	/* 下电失败，调用紧急restart */
 	emergency_restart();
 }
 
@@ -578,6 +640,12 @@ static void hw_failure_emergency_poweroff(int poweroff_delay_ms)
  * if the previous request has given a large timeout for forced shutdown.
  * Can be called from any context.
  */
+/* 触发一个紧急的系统poweroff
+   紧急下电原因，将会被打印出来
+   在触发强制shutdown之前，等待oderly shutdown的时间
+   它的作用是为了保护硬件不被损坏而触发的紧急下电流程。使用的场景包括thermal
+   保护，电压或电流regulator失败等
+*/
 void hw_protection_shutdown(const char *reason, int ms_until_forced)
 {
 	static atomic_t allow_proceed = ATOMIC_INIT(1);
@@ -592,11 +660,16 @@ void hw_protection_shutdown(const char *reason, int ms_until_forced)
 	 * Queue a backup emergency shutdown in the event of
 	 * orderly_poweroff failure
 	 */
+	/* 设置一个超时时间，并延迟触发紧急poweroff */
 	hw_failure_emergency_poweroff(ms_until_forced);
+	/* 立即执行orderly poweroff，若执行失败则等紧急poweroff的超时时间
+       到期后，执行紧急poweroff
+	*/
 	orderly_poweroff(true);
 }
 EXPORT_SYMBOL_GPL(hw_protection_shutdown);
 
+/* reboot命令行参数处理 */
 static int __init reboot_setup(char *str)
 {
 	for (;;) {

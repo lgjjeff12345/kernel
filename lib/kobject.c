@@ -25,6 +25,7 @@
  * and thus @kobj should have a namespace tag associated with it.  Returns
  * %NULL otherwise.
  */
+/* 返回kobject namespace的tag */
 const void *kobject_namespace(struct kobject *kobj)
 {
 	const struct kobj_ns_type_operations *ns_ops = kobj_ns_ops(kobj);
@@ -80,6 +81,7 @@ static int populate_dir(struct kobject *kobj)
 	return error;
 }
 
+/* 创建kobj目录 */
 static int create_dir(struct kobject *kobj)
 {
 	const struct kobj_type *ktype = get_ktype(kobj);
@@ -186,6 +188,7 @@ char *kobject_get_path(struct kobject *kobj, gfp_t gfp_mask)
 EXPORT_SYMBOL_GPL(kobject_get_path);
 
 /* add the kobject to its kset's list */
+/* 将其添加到kset链表 */
 static void kobj_kset_join(struct kobject *kobj)
 {
 	if (!kobj->kset)
@@ -209,19 +212,24 @@ static void kobj_kset_leave(struct kobject *kobj)
 	kset_put(kobj->kset);
 }
 
+/* kobject内部的初始化函数 */
 static void kobject_init_internal(struct kobject *kobj)
 {
 	if (!kobj)
 		return;
+	/* kobj的引用计数初始化为1 */
 	kref_init(&kobj->kref);
+	/* 初始化其链表节点 */
 	INIT_LIST_HEAD(&kobj->entry);
 	kobj->state_in_sysfs = 0;
+	/* 添加节点操作的uevent是否发送 */
 	kobj->state_add_uevent_sent = 0;
+	/* 删除节点操作的uevent是否发送 */
 	kobj->state_remove_uevent_sent = 0;
 	kobj->state_initialized = 1;
 }
 
-
+/* 添加kobj */
 static int kobject_add_internal(struct kobject *kobj)
 {
 	int error = 0;
@@ -237,9 +245,11 @@ static int kobject_add_internal(struct kobject *kobj)
 		return -EINVAL;
 	}
 
+	/* 增加父节点的引用计数 */
 	parent = kobject_get(kobj->parent);
 
 	/* join kset if set, use it as parent if we do not already have one */
+	/* 若该kobj含有kset，则将其加入kset链表中 */
 	if (kobj->kset) {
 		if (!parent)
 			parent = kobject_get(&kobj->kset->kobj);
@@ -252,6 +262,7 @@ static int kobject_add_internal(struct kobject *kobj)
 		 parent ? kobject_name(parent) : "<NULL>",
 		 kobj->kset ? kobject_name(&kobj->kset->kobj) : "<NULL>");
 
+	/* 创建kobj目录 */
 	error = create_dir(kobj);
 	if (error) {
 		kobj_kset_leave(kobj);
@@ -321,6 +332,7 @@ int kobject_set_name_vargs(struct kobject *kobj, const char *fmt,
  * kobject to the system, you must call kobject_rename() in order to
  * change the name of the kobject.
  */
+/* 设置kobj的名字 */
 int kobject_set_name(struct kobject *kobj, const char *fmt, ...)
 {
 	va_list vargs;
@@ -423,6 +435,7 @@ static __printf(3, 0) int kobject_add_varg(struct kobject *kobj,
  *         when the use of the object is finished in order to properly free
  *         everything.
  */
+/* 将kobj添加到sysfs的指定位置 */
 int kobject_add(struct kobject *kobj, struct kobject *parent,
 		const char *fmt, ...)
 {
@@ -755,12 +768,14 @@ void kobject_put(struct kobject *kobj)
 }
 EXPORT_SYMBOL(kobject_put);
 
+/* 动态kobj的release函数，该函数直接释放kobj结构体的内存 */
 static void dynamic_kobj_release(struct kobject *kobj)
 {
 	pr_debug("kobject: (%p): %s\n", kobj, __func__);
 	kfree(kobj);
 }
 
+/* 动态kobj的ktype */
 static struct kobj_type dynamic_kobj_ktype = {
 	.release	= dynamic_kobj_release,
 	.sysfs_ops	= &kobj_sysfs_ops,
@@ -777,6 +792,11 @@ static struct kobj_type dynamic_kobj_ktype = {
  * call to kobject_put() and not kfree(), as kobject_init() has
  * already been called on this structure.
  */
+/* 动态创建一个kobject结构体
+   该函数动态创建一个kobject结构体，将其设置为dynamic对象，并为其设置一个
+   默认的release函数。
+   有本函数创建的kobject对应清除时需要调用kobject_put，而非kfree。
+*/
 struct kobject *kobject_create(void)
 {
 	struct kobject *kobj;
@@ -802,11 +822,13 @@ struct kobject *kobject_create(void)
  *
  * If the kobject was not able to be created, NULL will be returned.
  */
+/* 创建一个kobject，并将其添加到sysfs */
 struct kobject *kobject_create_and_add(const char *name, struct kobject *parent)
 {
 	struct kobject *kobj;
 	int retval;
 
+	/* 动态创建一个kobject结构体 */
 	kobj = kobject_create();
 	if (!kobj)
 		return NULL;
@@ -825,14 +847,18 @@ EXPORT_SYMBOL_GPL(kobject_create_and_add);
  * kset_init() - Initialize a kset for use.
  * @k: kset
  */
+/* 初始化一个kset */
 void kset_init(struct kset *k)
 {
+	/* 初始化其对应的kobj */
 	kobject_init_internal(&k->kobj);
+	/* 初始化kset的链表 */
 	INIT_LIST_HEAD(&k->list);
 	spin_lock_init(&k->list_lock);
 }
 
 /* default kobject attribute operations */
+/* 默认的kobj show属性 */
 static ssize_t kobj_attr_show(struct kobject *kobj, struct attribute *attr,
 			      char *buf)
 {
@@ -845,6 +871,7 @@ static ssize_t kobj_attr_show(struct kobject *kobj, struct attribute *attr,
 	return ret;
 }
 
+/* 默认的kobj store属性 */
 static ssize_t kobj_attr_store(struct kobject *kobj, struct attribute *attr,
 			       const char *buf, size_t count)
 {
@@ -857,6 +884,7 @@ static ssize_t kobj_attr_store(struct kobject *kobj, struct attribute *attr,
 	return ret;
 }
 
+/* 动态kobj ktype的sysfs操作 */
 const struct sysfs_ops kobj_sysfs_ops = {
 	.show	= kobj_attr_show,
 	.store	= kobj_attr_store,
@@ -867,6 +895,7 @@ EXPORT_SYMBOL_GPL(kobj_sysfs_ops);
  * kset_register() - Initialize and add a kset.
  * @k: kset.
  */
+/* 初始化和添加一个kset */
 int kset_register(struct kset *k)
 {
 	int err;
@@ -874,6 +903,7 @@ int kset_register(struct kset *k)
 	if (!k)
 		return -EINVAL;
 
+	/* 初始化kset */
 	kset_init(k);
 	err = kobject_add_internal(&k->kobj);
 	if (err)
@@ -924,6 +954,7 @@ struct kobject *kset_find_obj(struct kset *kset, const char *name)
 }
 EXPORT_SYMBOL_GPL(kset_find_obj);
 
+/* kset的release函数 */
 static void kset_release(struct kobject *kobj)
 {
 	struct kset *kset = container_of(kobj, struct kset, kobj);
@@ -938,6 +969,7 @@ static void kset_get_ownership(struct kobject *kobj, kuid_t *uid, kgid_t *gid)
 		kobject_get_ownership(kobj->parent, uid, gid);
 }
 
+/* kset的ktype */
 static struct kobj_type kset_ktype = {
 	.sysfs_ops	= &kobj_sysfs_ops,
 	.release	= kset_release,
@@ -959,6 +991,7 @@ static struct kobj_type kset_ktype = {
  *
  * If the kset was not able to be created, NULL will be returned.
  */
+/* 动态创建一个kset */
 static struct kset *kset_create(const char *name,
 				const struct kset_uevent_ops *uevent_ops,
 				struct kobject *parent_kobj)
@@ -969,11 +1002,13 @@ static struct kset *kset_create(const char *name,
 	kset = kzalloc(sizeof(*kset), GFP_KERNEL);
 	if (!kset)
 		return NULL;
+	/* 设置该kset对应kobj的名字 */
 	retval = kobject_set_name(&kset->kobj, "%s", name);
 	if (retval) {
 		kfree(kset);
 		return NULL;
 	}
+	/* 设置该kset的uevent操作函数，以及parent kobj节点 */
 	kset->uevent_ops = uevent_ops;
 	kset->kobj.parent = parent_kobj;
 
@@ -982,6 +1017,7 @@ static struct kset *kset_create(const char *name,
 	 * no kset itself.  That way we can properly free it when it is
 	 * finished being used.
 	 */
+	/* 设置其对应kobj的ktype */
 	kset->kobj.ktype = &kset_ktype;
 	kset->kobj.kset = NULL;
 
@@ -1002,6 +1038,7 @@ static struct kset *kset_create(const char *name,
  *
  * If the kset was not able to be created, NULL will be returned.
  */
+/* 动态创建一个kset，并添加到sysfs中 */
 struct kset *kset_create_and_add(const char *name,
 				 const struct kset_uevent_ops *uevent_ops,
 				 struct kobject *parent_kobj)
@@ -1009,6 +1046,7 @@ struct kset *kset_create_and_add(const char *name,
 	struct kset *kset;
 	int error;
 
+	/* 创建一个kset */
 	kset = kset_create(name, uevent_ops, parent_kobj);
 	if (!kset)
 		return NULL;
@@ -1074,8 +1112,10 @@ const struct kobj_ns_type_operations *kobj_child_ns_ops(struct kobject *parent)
 	return ops;
 }
 
+/* 获取该kobject对应的namespace ops */
 const struct kobj_ns_type_operations *kobj_ns_ops(struct kobject *kobj)
 {
+	/* 通过该kobj    parent节点的ktype->child_ns_type获得 */
 	return kobj_child_ns_ops(kobj->parent);
 }
 

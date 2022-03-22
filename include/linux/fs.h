@@ -367,24 +367,30 @@ typedef struct {
 typedef int (*read_actor_t)(read_descriptor_t *, struct page *,
 		unsigned long, unsigned long);
 
+/* 地址空间操作回调 */
 struct address_space_operations {
+	/*写page、读page */
 	int (*writepage)(struct page *page, struct writeback_control *wbc);
 	int (*readpage)(struct file *, struct page *);
 
 	/* Write back some dirty pages from this mapping. */
+	/* 从address space中写回多个dirty页 */
 	int (*writepages)(struct address_space *, struct writeback_control *);
 
 	/* Set a page dirty.  Return true if this dirtied it */
+	/* 将一个页设置为dirty */
 	int (*set_page_dirty)(struct page *page);
 
 	/*
 	 * Reads in the requested pages. Unlike ->readpage(), this is
 	 * PURELY used for read-ahead!.
 	 */
+	/* 从backend读入页 */
 	int (*readpages)(struct file *filp, struct address_space *mapping,
 			struct list_head *pages, unsigned nr_pages);
 	void (*readahead)(struct readahead_control *);
 
+	/* 写开始和写结束接口 */
 	int (*write_begin)(struct file *, struct address_space *mapping,
 				loff_t pos, unsigned len, unsigned flags,
 				struct page **pagep, void **fsdata);
@@ -424,10 +430,12 @@ extern const struct address_space_operations empty_aops;
  * pagecache_write_begin/pagecache_write_end must be used by general code
  * to write into the pagecache.
  */
+/* pagecache写开始 */
 int pagecache_write_begin(struct file *, struct address_space *mapping,
 				loff_t pos, unsigned len, unsigned flags,
 				struct page **pagep, void **fsdata);
 
+/* pagecache写结束 */
 int pagecache_write_end(struct file *, struct address_space *mapping,
 				loff_t pos, unsigned len, unsigned copied,
 				struct page *page, void *fsdata);
@@ -450,6 +458,19 @@ int pagecache_write_end(struct file *, struct address_space *mapping,
  * @private_list: For use by the owner of the address_space.
  * @private_data: For use by the owner of the address_space.
  */
+/* cacheable,mappable对象的内容
+   host：该地址空间的所有者，inode或block_device
+   i_pages:cached页面
+   gfp_mask：用于分配页面的内存分配标志
+   i_mmap_writable：VM_SHARED映射的数量
+   nr_thps：pagecache中的THPs数量
+   i_mmap：私有和共享mapping的树
+   nrpages：页面entries的数量
+   writeback_index：写回从这里开始
+   a_ops：回调函数
+   flags：错误bit和标志
+   wb_err：最近的错误
+*/
 struct address_space {
 	struct inode		*host;
 	struct xarray		i_pages;
@@ -1389,6 +1410,7 @@ extern int send_sigurg(struct fown_struct *fown);
 #define SB_I_CGROUPWB	0x00000001	/* cgroup-aware writeback enabled */
 #define SB_I_NOEXEC	0x00000002	/* Ignore executables on this fs */
 #define SB_I_NODEV	0x00000004	/* Ignore devices on this fs */
+/* 在写回完成之前，不修改blk */
 #define SB_I_STABLE_WRITES 0x00000008	/* don't modify blks until WB is done */
 
 /* sb->s_iflags to limit user namespace mounts */

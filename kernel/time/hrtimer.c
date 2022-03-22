@@ -999,6 +999,7 @@ static int enqueue_hrtimer(struct hrtimer *timer,
  * reprogram to zero. This is useful, when the context does a reprogramming
  * anyway (e.g. timer interrupt)
  */
+/* 删除hrtimer */
 static void __remove_hrtimer(struct hrtimer *timer,
 			     struct hrtimer_clock_base *base,
 			     u8 newstate, int reprogram)
@@ -1011,6 +1012,7 @@ static void __remove_hrtimer(struct hrtimer *timer,
 	if (!(state & HRTIMER_STATE_ENQUEUED))
 		return;
 
+	/* 从红黑树中删除timer，并更新active_bases */
 	if (!timerqueue_del(&base->active, &timer->node))
 		cpu_base->active_bases &= ~(1 << base->index);
 
@@ -1022,6 +1024,7 @@ static void __remove_hrtimer(struct hrtimer *timer,
 	 * an superfluous call to hrtimer_force_reprogram() on the
 	 * remote cpu later on if the same timer gets enqueued again.
 	 */
+	/* 执行reprogram */
 	if (reprogram && timer == cpu_base->next_timer)
 		hrtimer_force_reprogram(cpu_base, 1);
 }
@@ -1029,6 +1032,7 @@ static void __remove_hrtimer(struct hrtimer *timer,
 /*
  * remove hrtimer, called with base lock held
  */
+/* 删除hrtimer */
 static inline int
 remove_hrtimer(struct hrtimer *timer, struct hrtimer_clock_base *base, bool restart)
 {
@@ -1165,6 +1169,7 @@ EXPORT_SYMBOL_GPL(hrtimer_start_range_ns);
  *  * -1 when the timer is currently executing the callback function and
  *    cannot be stopped
  */
+/* 尝试deactivate一个定时器 */
 int hrtimer_try_to_cancel(struct hrtimer *timer)
 {
 	struct hrtimer_clock_base *base;
@@ -1177,11 +1182,14 @@ int hrtimer_try_to_cancel(struct hrtimer *timer)
 	 * base lock does not serialize against a concurrent enqueue,
 	 * so we can avoid taking it.
 	 */
+	/* 定时器没有激活，不需要处理 */
 	if (!hrtimer_active(timer))
 		return 0;
 
+	/* 获取其base机构体指针 */
 	base = lock_hrtimer_base(timer, &flags);
 
+	/* 删除timer */
 	if (!hrtimer_callback_running(timer))
 		ret = remove_hrtimer(timer, base, false);
 
@@ -1453,6 +1461,7 @@ EXPORT_SYMBOL_GPL(hrtimer_init);
  *
  * It is important for this function to not return a false negative.
  */
+/* 判断一个定时器是否被激活 */
 bool hrtimer_active(const struct hrtimer *timer)
 {
 	struct hrtimer_clock_base *base;

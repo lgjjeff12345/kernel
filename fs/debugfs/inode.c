@@ -451,6 +451,15 @@ static struct dentry *__debugfs_create_file(const char *name, umode_t mode,
  * If debugfs is not enabled in the kernel, the value -%ENODEV will be
  * returned.
  */
+ /* 定义一个debugfs文件系统的文件
+    name：将要创建文件名字的字符串指针
+    mode：文件的权限
+    parent：该文件的父目录
+    data：
+    fops：被用于该文件的file operation结构体
+    它可以被用于创建debugfs的文件或目录，但若创建目录，则建议使用
+    debugfs_create_dir()函数
+ */
 struct dentry *debugfs_create_file(const char *name, umode_t mode,
 				   struct dentry *parent, void *data,
 				   const struct file_operations *fops)
@@ -836,6 +845,7 @@ static int __init debugfs_init(void)
 	if (!(debugfs_allow & DEBUGFS_ALLOW_MOUNT))
 		return -EPERM;
 
+	/* 在/sys/kernel目录下创建debug目录，并作为挂载点 */
 	retval = sysfs_create_mount_point(kernel_kobj, "debug");
 	if (retval)
 		return retval;

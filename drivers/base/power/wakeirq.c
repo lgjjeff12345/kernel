@@ -313,16 +313,21 @@ void dev_pm_disable_wake_irq_check(struct device *dev)
  * Sets up the wake-up event conditionally based on the
  * device_may_wake().
  */
+/* arm设备的唤醒
+   根据device_may_wakeup的条件设置唤醒事件
+*/
 void dev_pm_arm_wake_irq(struct wake_irq *wirq)
 {
 	if (!wirq)
 		return;
 
+	/* 判断该设备是否可以被唤醒 */
 	if (device_may_wakeup(wirq->dev)) {
 		if (wirq->status & WAKE_IRQ_DEDICATED_ALLOCATED &&
 		    !pm_runtime_status_suspended(wirq->dev))
 			enable_irq(wirq->irq);
 
+		/* 使能中断的唤醒功能 */
 		enable_irq_wake(wirq->irq);
 	}
 }
@@ -334,11 +339,13 @@ void dev_pm_arm_wake_irq(struct wake_irq *wirq)
  * Clears up the wake-up event conditionally based on the
  * device_may_wake().
  */
+/* 清除中断唤醒事件 */
 void dev_pm_disarm_wake_irq(struct wake_irq *wirq)
 {
 	if (!wirq)
 		return;
 
+	/* 关闭中断的唤醒功能 */
 	if (device_may_wakeup(wirq->dev)) {
 		disable_irq_wake(wirq->irq);
 

@@ -116,6 +116,7 @@ enum pageflags {
 	PG_reserved,
 	PG_private,		/* If pagecache, has fs-private data */
 	PG_private_2,		/* If pagecache, has fs aux data */
+	/* page正在被写回 */
 	PG_writeback,		/* Page is under writeback */
 	PG_head,		/* A head page */
 	PG_mappedtodisk,	/* Has blocks allocated on-disk */
@@ -180,15 +181,21 @@ enum pageflags {
 
 #ifndef __GENERATING_BOUNDS_H
 
+/* 获取该page的compound页head */
 static inline unsigned long _compound_head(const struct page *page)
 {
 	unsigned long head = READ_ONCE(page->compound_head);
 
+	/* compound_head bit 0设置表明其是compound页的头
+       返回时将bit 0的标志减掉
+	*/
 	if (unlikely(head & 1))
 		return head - 1;
+	/* 否则表示其不是compound页 */
 	return (unsigned long)page;
 }
 
+/* 获取该page的compound页head */
 #define compound_head(page)	((typeof(page))_compound_head(page))
 
 static __always_inline int PageTail(struct page *page)

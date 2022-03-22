@@ -34,6 +34,13 @@ extern unsigned long long max_possible_pfn;
  * reserved in the memory map; refer to memblock_mark_nomap() description
  * for further details
  */
+/* memblock标志
+   MEMBLOCK_NONE：普通内存
+   MEMBLOCK_HOTPLUG：可以热插拔的内存
+   MEMBLOCK_MIRROR：mirrored的区域
+   MEMBLOCK_NOMAP：不会直接添加到直接映射地址空间中，且在内存map时
+   会将其当做reserved内存。可使用memblock_mark_nomap标记
+*/
 enum memblock_flags {
 	MEMBLOCK_NONE		= 0x0,	/* No special request */
 	MEMBLOCK_HOTPLUG	= 0x1,	/* hotpluggable region */
@@ -48,6 +55,7 @@ enum memblock_flags {
  * @flags: memory region attributes
  * @nid: NUMA node id
  */
+/* 表示一个内存区域 */
 struct memblock_region {
 	phys_addr_t base;
 	phys_addr_t size;
@@ -65,6 +73,12 @@ struct memblock_region {
  * @regions: array of regions
  * @name: the memory type symbolic name
  */
+/* 
+  cnt：region数量
+  max：已分配数组的size
+  total_size：所有regions的总size
+  name：内存类型symbolic名
+*/
 struct memblock_type {
 	unsigned long cnt;
 	unsigned long max;
@@ -80,10 +94,14 @@ struct memblock_type {
  * @memory: usable memory regions
  * @reserved: reserved memory regions
  */
+/* memory block结构体 */
 struct memblock {
+	/* 内存地址排序方式 */
 	bool bottom_up;  /* is bottom up direction? */
 	phys_addr_t current_limit;
+	/* memory类型blcok */
 	struct memblock_type memory;
+	/* reserve类型block */
 	struct memblock_type reserved;
 };
 
@@ -245,6 +263,7 @@ static inline bool memblock_is_mirror(struct memblock_region *m)
 	return m->flags & MEMBLOCK_MIRROR;
 }
 
+/* 判断该memblock是否为nomap的 */
 static inline bool memblock_is_nomap(struct memblock_region *m)
 {
 	return m->flags & MEMBLOCK_NOMAP;
@@ -265,6 +284,7 @@ void __next_mem_pfn_range(int *idx, int nid, unsigned long *out_start_pfn,
  *
  * Walks over configured memory ranges.
  */
+/* 遍历与给定nid匹配的region，若nid为MAX_NUMNODES，则遍历所有region */
 #define for_each_mem_pfn_range(i, nid, p_start, p_end, p_nid)		\
 	for (i = -1, __next_mem_pfn_range(&i, nid, p_start, p_end, p_nid); \
 	     i >= 0; __next_mem_pfn_range(&i, nid, p_start, p_end, p_nid))
@@ -350,11 +370,13 @@ int memblock_set_node(phys_addr_t base, phys_addr_t size,
 		      struct memblock_type *type, int nid);
 
 #ifdef CONFIG_NUMA
+/* 设置该region的node id */
 static inline void memblock_set_region_node(struct memblock_region *r, int nid)
 {
 	r->nid = nid;
 }
 
+/* 获取该region的node id */
 static inline int memblock_get_region_node(const struct memblock_region *r)
 {
 	return r->nid;

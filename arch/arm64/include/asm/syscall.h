@@ -48,6 +48,9 @@ static inline long syscall_get_error(struct task_struct *task,
 	return IS_ERR_VALUE(error) ? error : 0;
 }
 
+/* 设置系统调用的返回值
+   在arm64中该返回值通过x0寄存器返回
+*/
 static inline void syscall_set_return_value(struct task_struct *task,
 					    struct pt_regs *regs,
 					    int error, long val)

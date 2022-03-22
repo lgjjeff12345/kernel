@@ -389,6 +389,7 @@ out_free_entry:
 	return NULL;
 }
 
+/* 创建proc目录entry */
 static struct proc_dir_entry *__proc_create(struct proc_dir_entry **parent,
 					  const char *name,
 					  umode_t mode,
@@ -398,6 +399,7 @@ static struct proc_dir_entry *__proc_create(struct proc_dir_entry **parent,
 	const char *fn;
 	struct qstr qstr;
 
+	/* 将xx/yy/name转换为/proc/xx/yy/name */
 	if (xlate_proc_name(name, parent, &fn) != 0)
 		goto out;
 	qstr.name = fn;
@@ -423,6 +425,7 @@ static struct proc_dir_entry *__proc_create(struct proc_dir_entry **parent,
 		return NULL;
 	}
 
+	/* 分配一个proc entry目录的内存 */
 	ent = kmem_cache_zalloc(proc_dir_entry_cache, GFP_KERNEL);
 	if (!ent)
 		goto out;
@@ -453,6 +456,7 @@ out:
 	return ent;
 }
 
+/* 创建一个proc文件系统的链接 */
 struct proc_dir_entry *proc_symlink(const char *name,
 		struct proc_dir_entry *parent, const char *dest)
 {
@@ -512,6 +516,7 @@ struct proc_dir_entry *proc_mkdir_mode(const char *name, umode_t mode,
 }
 EXPORT_SYMBOL(proc_mkdir_mode);
 
+/* 创建proc目录 */
 struct proc_dir_entry *proc_mkdir(const char *name,
 		struct proc_dir_entry *parent)
 {

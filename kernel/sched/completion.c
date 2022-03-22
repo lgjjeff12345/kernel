@@ -25,6 +25,7 @@
  * If this function wakes up a task, it executes a full memory barrier before
  * accessing the task state.
  */
+/*  唤醒完成量 */
 void complete(struct completion *x)
 {
 	unsigned long flags;
@@ -54,6 +55,7 @@ EXPORT_SYMBOL(complete);
  * @x. Also note that the function completion_done() can not be used
  * to know if there are still waiters after complete_all() has been called.
  */
+/* 唤醒所有等待在完成量上的线程 */
 void complete_all(struct completion *x)
 {
 	unsigned long flags;
@@ -133,8 +135,10 @@ wait_for_common_io(struct completion *x, long timeout, int state)
  * See also similar routines (i.e. wait_for_completion_timeout()) with timeout
  * and interrupt capability. Also see complete().
  */
+/* 等待完成量 */
 void __sched wait_for_completion(struct completion *x)
 {
+	/* 完成量是不能被信号中断的 */
 	wait_for_common(x, MAX_SCHEDULE_TIMEOUT, TASK_UNINTERRUPTIBLE);
 }
 EXPORT_SYMBOL(wait_for_completion);
@@ -151,6 +155,7 @@ EXPORT_SYMBOL(wait_for_completion);
  * Return: 0 if timed out, and positive (at least 1, or number of jiffies left
  * till timeout) if completed.
  */
+/* 带超时设置的完成量等待接口 */
 unsigned long __sched
 wait_for_completion_timeout(struct completion *x, unsigned long timeout)
 {

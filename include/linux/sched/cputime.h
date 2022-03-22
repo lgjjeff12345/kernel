@@ -169,6 +169,7 @@ static inline void account_group_system_time(struct task_struct *tsk,
 static inline void account_group_exec_runtime(struct task_struct *tsk,
 					      unsigned long long ns)
 {
+	/* 更新线程组的执行时间 */
 	struct thread_group_cputimer *cputimer = get_running_cputimer(tsk);
 
 	if (!cputimer)

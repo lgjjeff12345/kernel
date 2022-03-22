@@ -1494,6 +1494,7 @@ static const struct user_regset_view user_aarch32_ptrace_view = {
 	.regsets = aarch32_ptrace_regsets, .n = ARRAY_SIZE(aarch32_ptrace_regsets)
 };
 
+/* PTRACE_PEEKUSR的处理函数 */
 static int compat_ptrace_read_user(struct task_struct *tsk, compat_ulong_t off,
 				   compat_ulong_t __user *ret)
 {
@@ -1518,6 +1519,9 @@ static int compat_ptrace_read_user(struct task_struct *tsk, compat_ulong_t off,
 	return put_user(tmp, ret);
 }
 
+/* PTRACE_POKEUSR的处理函数
+   该函数用于修改寄存器的值
+*/
 static int compat_ptrace_write_user(struct task_struct *tsk, compat_ulong_t off,
 				    compat_ulong_t val)
 {
@@ -1674,6 +1678,7 @@ static int compat_ptrace_sethbpregs(struct task_struct *tsk, compat_long_t num,
 }
 #endif	/* CONFIG_HAVE_HW_BREAKPOINT */
 
+/* ptrace处理函数 */
 long compat_arch_ptrace(struct task_struct *child, compat_long_t request,
 			compat_ulong_t caddr, compat_ulong_t cdata)
 {
@@ -1683,14 +1688,17 @@ long compat_arch_ptrace(struct task_struct *child, compat_long_t request,
 	int ret;
 
 	switch (request) {
+		/* 读取寄存器，或代码段、数据段地址信息 */
 		case PTRACE_PEEKUSR:
 			ret = compat_ptrace_read_user(child, addr, datap);
 			break;
 
+		/* 修改寄存器值 */
 		case PTRACE_POKEUSR:
 			ret = compat_ptrace_write_user(child, addr, data);
 			break;
 
+		/* 获取一个线程的user_regset数据，并将其拷贝到用户地址空间 */
 		case COMPAT_PTRACE_GETREGS:
 			ret = copy_regset_to_user(child,
 						  &user_aarch32_view,
@@ -1699,6 +1707,7 @@ long compat_arch_ptrace(struct task_struct *child, compat_long_t request,
 						  datap);
 			break;
 
+		/* 将来自用户地址空间的数据保存到线程的user_regset中 */
 		case COMPAT_PTRACE_SETREGS:
 			ret = copy_regset_from_user(child,
 						    &user_aarch32_view,

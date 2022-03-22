@@ -50,14 +50,23 @@ extern u64 uevent_seqnum;
  * kobject_uevent_env(kobj, KOBJ_CHANGE, env) with additional event
  * specific variables added to the event environment.
  */
+/* uevent事件，其必须与lib/kobject_uevent.c中的字符串匹配 */
 enum kobject_action {
+	/* 添加事件 */
 	KOBJ_ADD,
+	/* 删除事件 */
 	KOBJ_REMOVE,
+	/* 改变事件 */
 	KOBJ_CHANGE,
+	/* 移动事件 */
 	KOBJ_MOVE,
+	/* 在线事件 */
 	KOBJ_ONLINE,
+	/* 离线事件 */
 	KOBJ_OFFLINE,
+	/* 绑定事件 */
 	KOBJ_BIND,
+	/* 解绑事件 */
 	KOBJ_UNBIND,
 };
 
@@ -65,7 +74,9 @@ struct kobject {
 	const char		*name;
 	struct list_head	entry;
 	struct kobject		*parent;
+	/* kset */
 	struct kset		*kset;
+	/* kobj对应的ktype */
 	struct kobj_type	*ktype;
 	struct kernfs_node	*sd; /* sysfs directory entry */
 	struct kref		kref;
@@ -135,24 +146,35 @@ static inline bool kobject_has_children(struct kobject *kobj)
 	return kobj->sd && kobj->sd->dir.subdirs;
 }
 
+/*kobj类型 */
 struct kobj_type {
+	/* 该kobj对应的release函数 */
 	void (*release)(struct kobject *kobj);
+	/* 其对应的sysfs操作 */
 	const struct sysfs_ops *sysfs_ops;
+	/* 默认属性 */
 	struct attribute **default_attrs;	/* use default_groups instead */
+	/* 属性组 */
 	const struct attribute_group **default_groups;
+	/* 可通过该接口获取给定kobj子节点的namespace操作类型 */
 	const struct kobj_ns_type_operations *(*child_ns_type)(struct kobject *kobj);
 	const void *(*namespace)(struct kobject *kobj);
 	void (*get_ownership)(struct kobject *kobj, kuid_t *uid, kgid_t *gid);
 };
 
+/* uevent环境变量结构体 */
 struct kobj_uevent_env {
+	/* 参数 */
 	char *argv[3];
+	/* 环境变量 */
 	char *envp[UEVENT_NUM_ENVP];
 	int envp_idx;
+	/* buffer */
 	char buf[UEVENT_BUFFER_SIZE];
 	int buflen;
 };
 
+/* kset的uevent操作函数 */
 struct kset_uevent_ops {
 	int (* const filter)(struct kset *kset, struct kobject *kobj);
 	const char *(* const name)(struct kset *kset, struct kobject *kobj);
@@ -160,10 +182,14 @@ struct kset_uevent_ops {
 		      struct kobj_uevent_env *env);
 };
 
+/* kobj属性 */
 struct kobj_attribute {
+	/* 该kobj对应的属性 */
 	struct attribute attr;
+	/* 该属性的show接口 */
 	ssize_t (*show)(struct kobject *kobj, struct kobj_attribute *attr,
 			char *buf);
+	/* 该属性的store接口 */
 	ssize_t (*store)(struct kobject *kobj, struct kobj_attribute *attr,
 			 const char *buf, size_t count);
 };
@@ -189,6 +215,16 @@ struct sock;
  * can add new environment variables, or filter out the uevents if so
  * desired.
  */
+/* kset是一组特定类型的kobject，它属于一个特定的子系统
+   kset定义了一组kobjects，它们可以是不同的types，但总体上这些
+   kobjects都希望被分成一组，且以相同的行为运行。kset被用于定义
+   kobject的属性回调和其它共同的事件
+   list：属于该kset的所有kobject链表
+   list_lock:
+   kobj:该kset自身的kobject
+   uevnet_ops：该kset包含的uevent操作函数。它们会在一个kobject发生
+   相应事件时被调用，从而使该kset可以添加新的环境变量，或过滤uevents
+*/
 struct kset {
 	struct list_head list;
 	spinlock_t list_lock;
@@ -218,6 +254,7 @@ static inline void kset_put(struct kset *k)
 	kobject_put(&k->kobj);
 }
 
+/* 获取其ktype */
 static inline struct kobj_type *get_ktype(struct kobject *kobj)
 {
 	return kobj->ktype;

@@ -58,6 +58,7 @@ EXPORT_PER_CPU_SYMBOL(irq_stat);
 
 static struct softirq_action softirq_vec[NR_SOFTIRQS] __cacheline_aligned_in_smp;
 
+/* 每个cpu都有一个ksoftirqd线程 */
 DEFINE_PER_CPU(struct task_struct *, ksoftirqd);
 
 const char * const softirq_to_name[NR_SOFTIRQS] = {
@@ -71,6 +72,7 @@ const char * const softirq_to_name[NR_SOFTIRQS] = {
  * to the pending events, so lets the scheduler to balance
  * the softirq load for us.
  */
+/* 唤醒ksoftirqd线程 */
 static void wakeup_softirqd(void)
 {
 	/* Interrupts are disabled: no need to stop preemption */
@@ -86,6 +88,7 @@ static void wakeup_softirqd(void)
  * unless we're doing some of the synchronous softirqs.
  */
 #define SOFTIRQ_NOW_MASK ((1 << HI_SOFTIRQ) | (1 << TASKLET_SOFTIRQ))
+/* ksoftirqd是否pending */
 static bool ksoftirqd_running(unsigned long pending)
 {
 	struct task_struct *tsk = __this_cpu_read(ksoftirqd);
@@ -655,6 +658,9 @@ void irq_exit_rcu(void)
  *
  * Also processes softirqs if needed and possible.
  */
+/* 退出中断上下文，更新rcu和lockdep
+   此时也会处理软中断
+*/
 void irq_exit(void)
 {
 	__irq_exit_rcu();
@@ -722,6 +728,7 @@ static void __tasklet_schedule_common(struct tasklet_struct *t,
 	struct tasklet_head *head;
 	unsigned long flags;
 
+	/* 将tasklet挂到该cpu的tasklet_vec链表中 */
 	local_irq_save(flags);
 	head = this_cpu_ptr(headp);
 	t->next = NULL;
@@ -889,6 +896,7 @@ void tasklet_unlock_wait(struct tasklet_struct *t)
 EXPORT_SYMBOL_GPL(tasklet_unlock_wait);
 #endif
 
+/* 软中断初始化 */
 void __init softirq_init(void)
 {
 	int cpu;
@@ -909,6 +917,7 @@ static int ksoftirqd_should_run(unsigned int cpu)
 	return local_softirq_pending();
 }
 
+/* ksoftirqd线程处理入口 */
 static void run_ksoftirqd(unsigned int cpu)
 {
 	ksoftirqd_run_begin();
@@ -964,8 +973,10 @@ static struct smp_hotplug_thread softirq_threads = {
 
 static __init int spawn_ksoftirqd(void)
 {
+	/* 设置cpu hotplug回调 */
 	cpuhp_setup_state_nocalls(CPUHP_SOFTIRQ_DEAD, "softirq:dead", NULL,
 				  takeover_tasklets);
+	/* 为每个cpu创建per cpu的ksoftirqd线程 */
 	BUG_ON(smpboot_register_percpu_thread(&softirq_threads));
 
 	return 0;

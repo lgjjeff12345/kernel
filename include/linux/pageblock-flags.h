@@ -38,6 +38,7 @@ extern unsigned int pageblock_order;
 #else /* CONFIG_HUGETLB_PAGE_SIZE_VARIABLE */
 
 /* Huge pages are a constant size */
+/* 若定义了hugetlb，则arm64架构下该值为9 */
 #define pageblock_order		HUGETLB_PAGE_ORDER
 
 #endif /* CONFIG_HUGETLB_PAGE_SIZE_VARIABLE */
@@ -45,10 +46,14 @@ extern unsigned int pageblock_order;
 #else /* CONFIG_HUGETLB_PAGE */
 
 /* If huge pages are not used, group by MAX_ORDER_NR_PAGES */
+/* 若未使用huge pages，该值为11 */
 #define pageblock_order		(MAX_ORDER-1)
 
 #endif /* CONFIG_HUGETLB_PAGE */
 
+/* 若定义了hugetlb，则arm64架构下该值为512。
+   若未使用huge页，则该值为2048
+*/
 #define pageblock_nr_pages	(1UL << pageblock_order)
 
 /* Forward declaration */

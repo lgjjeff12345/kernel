@@ -23,6 +23,7 @@
 
 #include "base.h"
 
+/* cpu的设备结构体指针 */
 static DEFINE_PER_CPU(struct device *, cpu_sys_devices);
 
 static int cpu_subsys_match(struct device *dev, struct device_driver *drv)
@@ -35,6 +36,7 @@ static int cpu_subsys_match(struct device *dev, struct device_driver *drv)
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
+/* 改变cpu所属的node */
 static void change_cpu_under_node(struct cpu *cpu,
 			unsigned int from_nid, unsigned int to_nid)
 {
@@ -388,6 +390,7 @@ int register_cpu(struct cpu *cpu, int num)
 	return 0;
 }
 
+/* 获取cpu的设备结构体 */
 struct device *get_cpu_device(unsigned cpu)
 {
 	if (cpu < nr_cpu_ids && cpu_possible(cpu))

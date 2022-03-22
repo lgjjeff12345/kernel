@@ -336,6 +336,7 @@ again:
 	return ret;
 }
 
+/* 移除memblock region */
 static void __init_memblock memblock_remove_region(struct memblock_type *type, unsigned long r)
 {
 	type->total_size -= type->regions[r].size;
@@ -705,6 +706,10 @@ int __init_memblock memblock_add(phys_addr_t base, phys_addr_t size)
  * Return:
  * 0 on success, -errno on failure.
  */
+/* 将给定范围的memblock隔离为不相交的块
+   遍历type类型的region，确保该region没有跨越base base + size边界。若有跨越
+   边界的region，则需将其按边界分离为两个region。
+*/
 static int __init_memblock memblock_isolate_range(struct memblock_type *type,
 					phys_addr_t base, phys_addr_t size,
 					int *start_rgn, int *end_rgn)
@@ -771,10 +776,12 @@ static int __init_memblock memblock_remove_range(struct memblock_type *type,
 	int start_rgn, end_rgn;
 	int i, ret;
 
+	/* 将给定范围的memblock隔离为不相交的块 */
 	ret = memblock_isolate_range(type, base, size, &start_rgn, &end_rgn);
 	if (ret)
 		return ret;
 
+	/* 移除memblock region */
 	for (i = end_rgn - 1; i >= start_rgn; i--)
 		memblock_remove_region(type, i);
 	return 0;
@@ -798,6 +805,9 @@ int __init_memblock memblock_remove(phys_addr_t base, phys_addr_t size)
  * Free boot memory block previously allocated by memblock_alloc_xx() API.
  * The freeing memory will not be released to the buddy allocator.
  */
+/* 释放先前通过memblock_alloc_xx()分配的boot     memory block。
+   被释放的内存将不会release到buddy分配器中
+*/
 int __init_memblock memblock_free(phys_addr_t base, phys_addr_t size)
 {
 	phys_addr_t end = base + size - 1;
@@ -1167,6 +1177,8 @@ void __init_memblock __next_mem_range_rev(u64 *idx, int nid,
 /*
  * Common iterator interface used to define for_each_mem_pfn_range().
  */
+/* 查找与给定nid匹配的region，若nid为MAX_NUMNODES，则遍历所有region
+*/
 void __init_memblock __next_mem_pfn_range(int *idx, int nid,
 				unsigned long *out_start_pfn,
 				unsigned long *out_end_pfn, int *out_nid)
@@ -1175,20 +1187,28 @@ void __init_memblock __next_mem_pfn_range(int *idx, int nid,
 	struct memblock_region *r;
 	int r_nid;
 
+	/* 遍历所有的region */
 	while (++*idx < type->cnt) {
 		r = &type->regions[*idx];
+		/* 获取该region的node id */
 		r_nid = memblock_get_region_node(r);
 
+		/* 过滤掉不合法的region */
 		if (PFN_UP(r->base) >= PFN_DOWN(r->base + r->size))
 			continue;
+		/* 若给定nid为MAX_NUMNODES，表明所有合法的region都是有效的。
+		   否则，查找与给定节点匹配的region 
+		*/
 		if (nid == MAX_NUMNODES || nid == r_nid)
 			break;
 	}
+	/* 查找失败 */
 	if (*idx >= type->cnt) {
 		*idx = -1;
 		return;
 	}
 
+	/* 返回该region的PFN */
 	if (out_start_pfn)
 		*out_start_pfn = PFN_UP(r->base);
 	if (out_end_pfn)
@@ -1899,6 +1919,7 @@ static int __init early_memblock(char *p)
 }
 early_param("memblock", early_memblock);
 
+/* 释放给定pfn范围的内存映射 */
 static void __init free_memmap(unsigned long start_pfn, unsigned long end_pfn)
 {
 	struct page *start_pg, *end_pg;
@@ -1907,6 +1928,7 @@ static void __init free_memmap(unsigned long start_pfn, unsigned long end_pfn)
 	/*
 	 * Convert start_pfn/end_pfn to a struct page pointer.
 	 */
+	/* 获取pfn对应的page结构体 */
 	start_pg = pfn_to_page(start_pfn - 1) + 1;
 	end_pg = pfn_to_page(end_pfn - 1) + 1;
 
@@ -1914,6 +1936,7 @@ static void __init free_memmap(unsigned long start_pfn, unsigned long end_pfn)
 	 * Convert to physical addresses, and round start upwards and end
 	 * downwards.
 	 */
+	/* 将page结构体转换为物理地址 */
 	pg = PAGE_ALIGN(__pa(start_pg));
 	pgend = __pa(end_pg) & PAGE_MASK;
 
@@ -1921,6 +1944,7 @@ static void __init free_memmap(unsigned long start_pfn, unsigned long end_pfn)
 	 * If there are free pages between these, free the section of the
 	 * memmap array.
 	 */
+	/* 若在它们之间存在空闲的pages，则释放该section的memmap array */
 	if (pg < pgend)
 		memblock_free(pg, pgend - pg);
 }
@@ -1928,11 +1952,14 @@ static void __init free_memmap(unsigned long start_pfn, unsigned long end_pfn)
 /*
  * The mem_map array can get very big.  Free the unused area of the memory map.
  */
+/* mem_map数组可以非常大，释放memory map中未使用的区域
+*/
 static void __init free_unused_memmap(void)
 {
 	unsigned long start, end, prev_end = 0;
 	int i;
 
+	/* 没有使能PFN_VALID或使能了SPARSEMEM_VMEMMAP，直接返回 */
 	if (!IS_ENABLED(CONFIG_HAVE_ARCH_PFN_VALID) ||
 	    IS_ENABLED(CONFIG_SPARSEMEM_VMEMMAP))
 		return;
@@ -1941,6 +1968,7 @@ static void __init free_unused_memmap(void)
 	 * This relies on each bank being in address order.
 	 * The banks are sorted previously in bootmem_init().
 	 */
+	/* 遍历所有region，并返回对应region的起始和结束pfn */
 	for_each_mem_pfn_range(i, MAX_NUMNODES, &start, &end, NULL) {
 #ifdef CONFIG_SPARSEMEM
 		/*
@@ -1960,6 +1988,10 @@ static void __init free_unused_memmap(void)
 		 * If we had a previous bank, and there is a space
 		 * between the current bank and the previous, free it.
 		 */
+		/* 若我们含有一个previous bank，且在当前bank和先前bank之间
+           含有一个空间，则释放该空间。
+           即做好适当的对齐后，释放block之间的空洞空间
+		*/
 		if (prev_end && prev_end < start)
 			free_memmap(prev_end, start);
 
@@ -1979,22 +2011,26 @@ static void __init free_unused_memmap(void)
 #endif
 }
 
+/* 将该段地址释放到buddy中 */
 static void __init __free_pages_memory(unsigned long start, unsigned long end)
 {
 	int order;
 
+	/* 将其释放到最大的order中 */
 	while (start < end) {
 		order = min(MAX_ORDER - 1UL, __ffs(start));
 
 		while (start + (1UL << order) > end)
 			order--;
 
+		/* 向buddy释放特定order的page */
 		memblock_free_pages(pfn_to_page(start), start, order);
 
 		start += (1UL << order);
 	}
 }
 
+/* 将该段地址释放到buddy中 */
 static unsigned long __init __free_memory_core(phys_addr_t start,
 				 phys_addr_t end)
 {
@@ -2005,11 +2041,13 @@ static unsigned long __init __free_memory_core(phys_addr_t start,
 	if (start_pfn >= end_pfn)
 		return 0;
 
+	/* 将该段地址释放到buddy中 */
 	__free_pages_memory(start_pfn, end_pfn);
 
 	return end_pfn - start_pfn;
 }
 
+/* 初始化reserved的页面 */
 static void __init memmap_init_reserved_pages(void)
 {
 	struct memblock_region *region;
@@ -2017,10 +2055,12 @@ static void __init memmap_init_reserved_pages(void)
 	u64 i;
 
 	/* initialize struct pages for the reserved regions */
+	/* 遍历所有的reserved内存区间 */
 	for_each_reserved_mem_range(i, &start, &end)
 		reserve_bootmem_region(start, end);
 
 	/* and also treat struct pages for the NOMAP regions as PageReserved */
+	/* 遍历所有的memory region，保留nomap的region */
 	for_each_mem_region(region) {
 		if (memblock_is_nomap(region)) {
 			start = region->base;
@@ -2038,6 +2078,7 @@ static unsigned long __init free_low_memory_core_early(void)
 
 	memblock_clear_hotplug(0, -1);
 
+	/* 初始化reserved的页面，将它们标记为reserved */
 	memmap_init_reserved_pages();
 
 	/*
@@ -2058,10 +2099,12 @@ void reset_node_managed_pages(pg_data_t *pgdat)
 {
 	struct zone *z;
 
+	/* 遍历该node的所有zone，清除该zone的managed_pages值 */
 	for (z = pgdat->node_zones; z < pgdat->node_zones + MAX_NR_ZONES; z++)
 		atomic_long_set(&z->managed_pages, 0);
 }
 
+/* 清除所有zone的managed_pages值计数值 */
 void __init reset_all_zones_managed_pages(void)
 {
 	struct pglist_data *pgdat;
@@ -2078,21 +2121,26 @@ void __init reset_all_zones_managed_pages(void)
 /**
  * memblock_free_all - release free pages to the buddy allocator
  */
+/* 将memblock中空闲的page释放到buddy分配器中 */
 void __init memblock_free_all(void)
 {
 	unsigned long pages;
 
 	free_unused_memmap();
+	/* 清除所有zone的managed_pages值计数值 */
 	reset_all_zones_managed_pages();
 
 	pages = free_low_memory_core_early();
+	/* 更新总ram size */
 	totalram_pages_add(pages);
 }
 
 #if defined(CONFIG_DEBUG_FS) && defined(CONFIG_ARCH_KEEP_MEMBLOCK)
 
+/* debugfs的show函数 */
 static int memblock_debug_show(struct seq_file *m, void *private)
 {
+	/* 获取memblock的类型 */
 	struct memblock_type *type = m->private;
 	struct memblock_region *reg;
 	int i;
@@ -2109,12 +2157,15 @@ static int memblock_debug_show(struct seq_file *m, void *private)
 }
 DEFINE_SHOW_ATTRIBUTE(memblock_debug);
 
+/* 初始化memblock的debugfs接口 */
 static int __init memblock_init_debugfs(void)
 {
 	struct dentry *root = debugfs_create_dir("memblock", NULL);
 
+	/* memblock的内存 */
 	debugfs_create_file("memory", 0444, root,
 			    &memblock.memory, &memblock_debug_fops);
+	/* memblock的reserved内存 */
 	debugfs_create_file("reserved", 0444, root,
 			    &memblock.reserved, &memblock_debug_fops);
 #ifdef CONFIG_HAVE_MEMBLOCK_PHYS_MAP

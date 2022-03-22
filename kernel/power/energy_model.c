@@ -243,6 +243,7 @@ EXPORT_SYMBOL_GPL(em_pd_get);
  * Returns the performance domain to which @cpu belongs, or NULL if it doesn't
  * exist.
  */
+/* 获取该cpu的energy model */
 struct em_perf_domain *em_cpu_get(int cpu)
 {
 	struct device *cpu_dev;
@@ -251,6 +252,7 @@ struct em_perf_domain *em_cpu_get(int cpu)
 	if (!cpu_dev)
 		return NULL;
 
+	/* 获取该cpu的perf domain */
 	return em_pd_get(cpu_dev);
 }
 EXPORT_SYMBOL_GPL(em_cpu_get);

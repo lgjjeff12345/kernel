@@ -31,6 +31,7 @@
 
 #include "irq-gic-common.h"
 
+/* 0x20 */
 #define GICD_INT_NMI_PRI	(GICD_INT_DEF_PRI & ~0x80)
 
 #define FLAGS_WORKAROUND_GICR_WAKER_MSM8996	(1ULL << 0)

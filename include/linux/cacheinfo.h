@@ -10,6 +10,7 @@
 struct device_node;
 struct attribute;
 
+/* cache类型 */
 enum cache_type {
 	CACHE_TYPE_NOCACHE = 0,
 	CACHE_TYPE_INST = BIT(0),
@@ -47,6 +48,21 @@ extern unsigned int coherency_max_size;
  * While @of_node, @disable_sysfs and @priv are used for internal book
  * keeping, the remaining members form the core properties of the cache
  */
+/* 代表一个cache的叶节点 
+   id：cache id，在相同等级和level下该值是唯一地
+   type：cache的类型，数据|指令|unified
+   level：在多级cache中指示其层次结构
+   coherency_line_size：cache line的size
+   number_of_sets：总的cache sets，一个set表示共享相同index的cache line集合
+   ways_of_associativity：在缓存中放置特定内存块的方式的数量
+   physical_line_partition：共享相同cachetag的物理cache line数量
+   size：cache的总size
+   shared_cpu_map：共享该cache节点的所以cpumask
+   attributes：表示不同cache属性的bitfield
+   fw_token：用于确定不同cacheinfo结构是否代表单个硬件缓存实例的唯一值
+   disable_sysfs：指示本节点是否在sysfs中可见
+   priv：指向私有数据
+*/
 struct cacheinfo {
 	unsigned int id;
 	enum cache_type type;
@@ -72,9 +88,12 @@ struct cacheinfo {
 	void *priv;
 };
 
+/* cpu cacheinfo结构体 */
 struct cpu_cacheinfo {
 	struct cacheinfo *info_list;
+	/* cache级数 */
 	unsigned int num_levels;
+	/* 叶节点数量 */
 	unsigned int num_leaves;
 	bool cpu_map_populated;
 };
@@ -83,13 +102,14 @@ struct cpu_cacheinfo {
  * Helpers to make sure "func" is executed on the cpu whose cache
  * attributes are being detected
  */
+/* 调用ipi在该cpu上执行该函数 */	
 #define DEFINE_SMP_CALL_CACHE_FUNCTION(func)			\
 static inline void _##func(void *ret)				\
 {								\
 	int cpu = smp_processor_id();				\
 	*(int *)ret = __##func(cpu);				\
 }								\
-								\
+							\
 int func(unsigned int cpu)					\
 {								\
 	int ret;						\
@@ -124,11 +144,14 @@ const struct attribute_group *cache_get_priv_group(struct cacheinfo *this_leaf);
  * Get the id of the cache associated with @cpu at level @level.
  * cpuhp lock must be held.
  */
+/* 获取在等级为level下，与cpu相关的cache id */
 static inline int get_cpu_cacheinfo_id(int cpu, int level)
 {
+	/* 获取cpu的cache信息 */
 	struct cpu_cacheinfo *ci = get_cpu_cacheinfo(cpu);
 	int i;
 
+	/* 遍历info_list中的所有子节点，查找与给定等级相等的信息，并返回其id值 */
 	for (i = 0; i < ci->num_leaves; i++) {
 		if (ci->info_list[i].level == level) {
 			if (ci->info_list[i].attributes & CACHE_ID)

@@ -265,9 +265,12 @@ struct rt_bandwidth {
 
 void __dl_clear_params(struct task_struct *p);
 
+/* deadline带宽 */
 struct dl_bandwidth {
 	raw_spinlock_t		dl_runtime_lock;
+	/* 运行时间 */
 	u64			dl_runtime;
+	/* 周期 */
 	u64			dl_period;
 };
 
@@ -526,6 +529,9 @@ struct cfs_rq {
 	unsigned int		idle_h_nr_running; /* SCHED_IDLE */
 
 	u64			exec_clock;
+	/* 当前队里中调度实体的最小虚拟运行时间，新任务创建时会参考该时间初始化
+       任务的虚拟运行时间
+	*/
 	u64			min_vruntime;
 #ifdef CONFIG_SCHED_CORE
 	unsigned int		forceidle_seq;
@@ -536,6 +542,7 @@ struct cfs_rq {
 	u64			min_vruntime_copy;
 #endif
 
+	/* 该rq记录vruntime的红黑树 */
 	struct rb_root_cached	tasks_timeline;
 
 	/*
@@ -625,6 +632,7 @@ static inline int rt_bandwidth_enabled(void)
 
 /* Real-Time classes' related field in a runqueue: */
 struct rt_rq {
+	/* 每个优先级的就绪队列 */
 	struct rt_prio_array	active;
 	unsigned int		rt_nr_running;
 	unsigned int		rr_nr_running;
@@ -1461,6 +1469,7 @@ static inline u64 rq_clock(struct rq *rq)
 	return rq->clock;
 }
 
+/* rq上task的运行时间 */
 static inline u64 rq_clock_task(struct rq *rq)
 {
 	lockdep_assert_rq_held(rq);
@@ -2084,6 +2093,7 @@ extern const u32		sched_prio_to_wmult[40];
 #define DEQUEUE_MOVE		0x04 /* Matches ENQUEUE_MOVE */
 #define DEQUEUE_NOCLOCK		0x08 /* Matches ENQUEUE_NOCLOCK */
 
+/* 因唤醒进程而将其加入运行队列 */
 #define ENQUEUE_WAKEUP		0x01
 #define ENQUEUE_RESTORE		0x02
 #define ENQUEUE_MOVE		0x04
@@ -2213,6 +2223,7 @@ static inline bool sched_stop_runnable(struct rq *rq)
 	return rq->stop && task_on_rq_queued(rq->stop);
 }
 
+/* dl rq上是否有运行任务 */
 static inline bool sched_dl_runnable(struct rq *rq)
 {
 	return rq->dl.dl_nr_running > 0;

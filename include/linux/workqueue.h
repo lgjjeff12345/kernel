@@ -134,6 +134,7 @@ struct rcu_work {
  *
  * This can be used to change attributes of an unbound workqueue.
  */
+/* workqueue属性 */
 struct workqueue_attrs {
 	/**
 	 * @nice: nice level

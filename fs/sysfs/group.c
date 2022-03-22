@@ -105,6 +105,7 @@ exit:
 }
 
 
+/* 创建group的sysfs属性 */
 static int internal_create_group(struct kobject *kobj, int update,
 				 const struct attribute_group *grp)
 {
@@ -176,6 +177,7 @@ int sysfs_create_group(struct kobject *kobj,
 }
 EXPORT_SYMBOL_GPL(sysfs_create_group);
 
+/* 创建groups属性 */
 static int internal_create_groups(struct kobject *kobj, int update,
 				  const struct attribute_group **groups)
 {
@@ -185,6 +187,7 @@ static int internal_create_groups(struct kobject *kobj, int update,
 	if (!groups)
 		return 0;
 
+	/* 遍历groups数组，并创建其sysfs属性 */
 	for (i = 0; groups[i]; i++) {
 		error = internal_create_group(kobj, update, groups[i]);
 		if (error) {

@@ -106,12 +106,61 @@
  *
  */
 
+/* menu governor的原理
+   对于menu governor，选择C状态有三个决定因素
+  （1）能量平衡点
+  （2）性能影响
+  （3）latency容忍度
+  
+   能量平衡点：
+   C状态进入和离开都有一定的energy成本，因此需要在c状态下保持一定的时间才能
+   在这一成本上实现收支平衡。CPUIDLE通过target_residency成员提供其duration。
+   因此我们需要良好地预测需要在idle状态的时间。与传统的menu governor类似，
+   我们从实际已知的“下一个计时器事件”时间开始
+   。
+   由于除了下一次定时器事件外，还有其它的唤醒源（如中断），因此为了
+   获取更加实际的估计，会对估计引入一个校正因数。它会基于其历史行为，
+   如过去实际的周期总是next timer tick的50%，则校正因数为0.5。
+   
+   menu使用该校正系数的运行平均值，当然，它会使用一组系数，而不是单一的系数。
+   这源于认识到该比率取决于预期持续时间的数量级，如果我们预期有500毫秒的空闲
+   时间，那么很早就得到中断的可能性要比预期有50微秒的空闲时间的可能性高得多。
+   第二个对实际因素有很大影响的独立因素是是否有（磁盘）IO未完成。我们认为每一
+   个睡眠时间超过50毫秒是完美的；睡眠时间比这长，没有能量增益。
+
+   由于以上两个原因，我们维护了一个包含12个独立系数的数组，它将根据预期持续时
+   间的大小以及“is IO Understand”属性进行索引。
+
+   可重复间隔检测器：
+   在有些情况下，next timer是一个不可使用预测器，这些情况下，间隔是固定的，例如
+   由于硬件中断缓解，但也由于固定的传输速率设备，如鼠标.
+   这时，我们使用一个不同的预测器，我们跟踪最后8个间隔时间，若这8个间隔的偏离都
+   低于门限值，则我们使用其平均值作为预测的间隔
+
+   限制性能影响：
+   对于有比较高退出延迟的c状态，会对workload产生比较大的影响，它对大部分的系统
+   管理员是不可接受的，进一步地，低性能也有其自身的power成本。作为一般的经验法则，
+   menu假设以下启发适用：
+   系统越繁忙，C状态的影响就越小，这个经验法则是使用性能乘数实现的：
+   如果exit延迟乘以性能乘数的时间长于预测的持续时间，则由于对性能的影响太大，C状
+   态不被视为选择的候选状态。
+   因此，这个乘数越大，我们选择一个deep c状态就需要更长的idle时间。因此更加繁忙的
+   cpu达到这种深度c状态的可能性就越小。
+
+   两个系数可被用于确定这个乘数：
+  （1）我们含有的每个cpu负载平均值的每一个点都加10
+  （2）在此CPU上等待IO的每个进程加上5分
+
+   负载平均系数为决策提供更长的时间（几秒钟）输入，而iowait值为cpu本地瞬时输入。
+   iowait因子看起来可能很低，但要意识到这也已经在系统平均负载中体现出来了。	
+*/
 struct menu_device {
 	int             needs_update;
 	int             tick_wakeup;
 
 	u64		next_timer_ns;
 	unsigned int	bucket;
+	/* 校正系数 */
 	unsigned int	correction_factor[BUCKETS];
 	unsigned int	intervals[INTERVALS];
 	int		interval_ptr;
@@ -262,10 +311,13 @@ again:
  * @dev: the CPU
  * @stop_tick: indication on whether or not to stop the tick
  */
+/* 选择下次进入的idle状态 */
 static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 		       bool *stop_tick)
 {
+	/* 本cpu的menu device */
 	struct menu_device *data = this_cpu_ptr(&menu_devices);
+	/* 该cpu的对应qos的resume latency */
 	s64 latency_req = cpuidle_governor_latency_req(dev->cpu);
 	unsigned int predicted_us;
 	u64 predicted_ns;
@@ -274,6 +326,7 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 	ktime_t delta, delta_tick;
 	int i, idx;
 
+	/* 若需要更新数据 */
 	if (data->needs_update) {
 		menu_update(drv, dev);
 		data->needs_update = 0;
@@ -433,12 +486,20 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
  * NOTE: it's important to be fast here because this operation will add to
  *       the overall exit latency.
  */
+/* 记录需要更新的数据结构
+   在cpu退出idle状态后，menu governor会将将上一轮的进入idle状态的数据更新到
+   menu driver中，作为下一次select的参数
+*/
 static void menu_reflect(struct cpuidle_device *dev, int index)
 {
+	/* 本cpu的menu设备结构体 */
 	struct menu_device *data = this_cpu_ptr(&menu_devices);
 
+	/* 该cpu最后一次进入状态对应的index，即上次进入idle时的深度 */
 	dev->last_state_idx = index;
+	/* 下次进入select流程时需要更新 */
 	data->needs_update = 1;
+	/* 上次被唤醒是否由tick唤醒 */
 	data->tick_wakeup = tick_nohz_idle_got_tick();
 }
 
@@ -447,9 +508,12 @@ static void menu_reflect(struct cpuidle_device *dev, int index)
  * @drv: cpuidle driver containing state data
  * @dev: the CPU
  */
+/* 更新统计数据 */
 static void menu_update(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 {
+	/* 本cpu的menu设备 */
 	struct menu_device *data = this_cpu_ptr(&menu_devices);
+	/* 设备上一次进入idle深度的index */
 	int last_idx = dev->last_state_idx;
 	struct cpuidle_state *target = &drv->states[last_idx];
 	u64 measured_ns;
@@ -542,6 +606,7 @@ static void menu_update(struct cpuidle_driver *drv, struct cpuidle_device *dev)
  * @drv: cpuidle driver
  * @dev: the CPU
  */
+/* 使能设备 */
 static int menu_enable_device(struct cpuidle_driver *drv,
 				struct cpuidle_device *dev)
 {
@@ -554,12 +619,14 @@ static int menu_enable_device(struct cpuidle_driver *drv,
 	 * if the correction factor is 0 (eg first time init or cpu hotplug
 	 * etc), we actually want to start out with a unity factor.
 	 */
+	/* 校正系数初始化为1024 * 8 */
 	for(i = 0; i < BUCKETS; i++)
 		data->correction_factor[i] = RESOLUTION * DECAY;
 
 	return 0;
 }
 
+/* governor定义 */
 static struct cpuidle_governor menu_governor = {
 	.name =		"menu",
 	.rating =	20,
@@ -571,8 +638,10 @@ static struct cpuidle_governor menu_governor = {
 /**
  * init_menu - initializes the governor
  */
+/* 初始化menu governor */
 static int __init init_menu(void)
 {
+	/* 注册该governor */
 	return cpuidle_register_governor(&menu_governor);
 }
 

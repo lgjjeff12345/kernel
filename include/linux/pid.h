@@ -8,9 +8,13 @@
 
 enum pid_type
 {
+	/* 线程id */
 	PIDTYPE_PID,
+	/* 线程组id，实际用于进程id */
 	PIDTYPE_TGID,
+	/* 进程组id */
 	PIDTYPE_PGID,
+	/* session id */
 	PIDTYPE_SID,
 	PIDTYPE_MAX,
 };

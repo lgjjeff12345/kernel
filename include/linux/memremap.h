@@ -16,6 +16,13 @@ struct device;
  * @align: pages reserved to meet allocation alignments
  * @alloc: track pages consumed, private to vmemmap_populate()
  */
+/* 为vmemmap_populate预分配的存储
+   base_pfn：整个dev_pagemap映射的base pfn
+   reserve：page已经被映射，但被保留给驱动使用
+   free：映射中留出用于memmap存储的free pages
+   align：预留用于分配时对齐的page
+   alloc：跟踪已经被消费的页面，是vmemmap_populate私有的
+*/
 struct vmem_altmap {
 	unsigned long base_pfn;
 	const unsigned long end_pfn;
@@ -56,6 +63,18 @@ struct vmem_altmap {
  * Device memory residing in a PCI BAR intended for use with Peer-to-Peer
  * transactions.
  */
+/* 指定ZONE_DEVICE内存的类型，每种类型含有不同的使用场景
+   （1）MEMORY_DEVICE_PRIVATE：不是由cpu直接寻址的设备内存，CPU不能读也不能写private
+   内存。这种情形下，我们依然含有设备内存的backing page结构体，它可以简化我们的
+   设计，但需要注意这种page结构体需要被视为opaque队形，而不是normal的page结构体
+   （2）MEMORY_DEVICE_FS_DAX：host内存含有与系统内存相似的访问方法。DMA coherent且支持
+   page pinning。为了支持page pinning和其它操作的协调，MEMORY_DEVICE_FS_DAX在page处于
+   unpinned且是idle时唤醒一个事件。这种唤醒用于协调物理地址空间管理（如fs截断/空洞punch）
+   与pinned pages（如设备dma）
+   （3）MEMORY_DEVICE_GENERIC：host内存含有与系统内存相似的访问方法。DMA coherent且支持
+   page pinning。使用示例如DAX设备，它使用一个字符设备保留内存
+   （4）MEMORY_DEVICE_PCI_P2PDMA：内存位于PCI的BAR中，以用于peer-to-peer传输
+*/
 enum memory_type {
 	/* 0 is reserved to catch uninitialized type fields */
 	MEMORY_DEVICE_PRIVATE = 1,
@@ -64,6 +83,7 @@ enum memory_type {
 	MEMORY_DEVICE_PCI_P2PDMA,
 };
 
+/* 设备页映射的操作函数 */
 struct dev_pagemap_ops {
 	/*
 	 * Called once the page refcount reaches 1.  (ZONE_DEVICE pages never
@@ -86,6 +106,7 @@ struct dev_pagemap_ops {
 	 * Used for private (un-addressable) device memory only.  Must migrate
 	 * the page back to a CPU accessible page.
 	 */
+	/* 只用于private设备内存，需要将page迁移到cpu可访问的page */
 	vm_fault_t (*migrate_to_ram)(struct vm_fault *vmf);
 };
 
@@ -107,6 +128,8 @@ struct dev_pagemap_ops {
  * @range: range to be mapped when nr_range == 1
  * @ranges: array of ranges to be mapped when nr_range > 1
  */
+/* ZONE_DEVICE映射的metadata
+*/
 struct dev_pagemap {
 	struct vmem_altmap altmap;
 	struct percpu_ref *ref;

@@ -428,6 +428,7 @@ extern int kptr_restrict;
  * used when continuing a log message with no newline ('\n') enclosed. Otherwise
  * it defaults back to KERN_DEFAULT loglevel.
  */
+/* 不换行 */
 #define pr_cont(fmt, ...) \
 	printk(KERN_CONT fmt, ##__VA_ARGS__)
 

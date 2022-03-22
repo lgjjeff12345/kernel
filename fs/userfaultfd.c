@@ -33,8 +33,11 @@ int sysctl_unprivileged_userfaultfd __read_mostly;
 
 static struct kmem_cache *userfaultfd_ctx_cachep __read_mostly;
 
+/* 用户fault fd状态 */
 enum userfaultfd_state {
+	/* 等待api */
 	UFFD_STATE_WAIT_API,
+	/* 正在运行 */
 	UFFD_STATE_RUNNING,
 };
 
@@ -52,24 +55,32 @@ enum userfaultfd_state {
  * since fd_wqh.lock is taken by aio_poll() while it's holding a lock that's
  * also taken in IRQ context.
  */
+/* 用户fault fd上下文 */
 struct userfaultfd_ctx {
 	/* waitqueue head for the pending (i.e. not read) userfaults */
+	/* pending userfaults等待队列头 */
 	wait_queue_head_t fault_pending_wqh;
 	/* waitqueue head for the userfaults */
+	/* userfaults等待队列头 */
 	wait_queue_head_t fault_wqh;
 	/* waitqueue head for the pseudo fd to wakeup poll/read */
+	/* 用于唤醒poll/read的伪fd等待队列头 */
 	wait_queue_head_t fd_wqh;
 	/* waitqueue head for events */
+	/* 事件的等待队列头 */
 	wait_queue_head_t event_wqh;
 	/* a refile sequence protected by fault_pending_wqh lock */
 	seqcount_spinlock_t refile_seq;
 	/* pseudo fd refcounting */
 	refcount_t refcount;
 	/* userfaultfd syscall flags */
+	/* userfaultfd系统调用标志  */
 	unsigned int flags;
 	/* features requested from the userspace */
+	/* 来自用户空间的features请求 */
 	unsigned int features;
 	/* state machine */
+	/* 状态机 */
 	enum userfaultfd_state state;
 	/* released */
 	bool released;

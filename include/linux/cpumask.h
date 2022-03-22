@@ -808,6 +808,7 @@ set_cpu_possible(unsigned int cpu, bool possible)
 		cpumask_clear_cpu(cpu, &__cpu_possible_mask);
 }
 
+/* 设置cpu   present标志 */
 static inline void
 set_cpu_present(unsigned int cpu, bool present)
 {

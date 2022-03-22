@@ -962,6 +962,7 @@ compaction_capture(struct capture_control *capc, struct page *page,
 #endif /* CONFIG_COMPACTION */
 
 /* Used for pages not on another list */
+/* 将特定order的pages挂到给定zone相应order的free_area中 */
 static inline void add_to_free_list(struct page *page, struct zone *zone,
 				    unsigned int order, int migratetype)
 {
@@ -1015,6 +1016,7 @@ static inline void del_page_from_free_list(struct page *page, struct zone *zone,
  * so it's less likely to be used soon and more likely to be merged
  * as a higher order page
  */
+/* merge buddy的页面 */
 static inline bool
 buddy_merge_likely(unsigned long pfn, unsigned long buddy_pfn,
 		   struct page *page, unsigned int order)
@@ -1060,7 +1062,11 @@ buddy_merge_likely(unsigned long pfn, unsigned long buddy_pfn,
  *
  * -- nyc
  */
-
+/* 将特定order的page释放到buddy系统中
+   buddy系统是一种为不同order维护内存block direct-mapped表的机制。
+   表的底部level包含最小分配单元的内存map（pages），在其之上则是2^n次
+   长度size的分配单元。 
+*/
 static inline void __free_one_page(struct page *page,
 		unsigned long pfn,
 		struct zone *zone, unsigned int order,
@@ -1147,6 +1153,7 @@ done_merging:
 	else
 		to_tail = buddy_merge_likely(pfn, buddy_pfn, page, order);
 
+	/* 将特定order的pages挂到给定zone相应order的free_area中 */
 	if (to_tail)
 		add_to_free_list_tail(page, zone, order, migratetype);
 	else
@@ -1289,6 +1296,7 @@ static void kernel_init_free_pages(struct page *page, int numpages, bool zero_ta
 	kasan_enable_current();
 }
 
+/* 释放page的准备函数 */
 static __always_inline bool free_pages_prepare(struct page *page,
 			unsigned int order, bool check_free, fpi_t fpi_flags)
 {
@@ -1614,6 +1622,7 @@ static inline void init_reserved_page(unsigned long pfn)
  * marks the pages PageReserved. The remaining valid pages are later
  * sent to the buddy page allocator.
  */
+/* 将给定范围内的内存设置为reserve */
 void __meminit reserve_bootmem_region(phys_addr_t start, phys_addr_t end)
 {
 	unsigned long start_pfn = PFN_DOWN(start);
@@ -1638,30 +1647,37 @@ void __meminit reserve_bootmem_region(phys_addr_t start, phys_addr_t end)
 	}
 }
 
+/* 向buddy释放特定order的page */
 static void __free_pages_ok(struct page *page, unsigned int order,
 			    fpi_t fpi_flags)
 {
 	unsigned long flags;
 	int migratetype;
 	unsigned long pfn = page_to_pfn(page);
+	/* 获取其对应的zone */
 	struct zone *zone = page_zone(page);
 
+	/* 释放page的准备函数 */
 	if (!free_pages_prepare(page, order, true, fpi_flags))
 		return;
 
+	/* 获取page的migrate类型 */
 	migratetype = get_pfnblock_migratetype(page, pfn);
 
 	spin_lock_irqsave(&zone->lock, flags);
+	/* 判断该zone是否含有isolate pageblock */
 	if (unlikely(has_isolate_pageblock(zone) ||
 		is_migrate_isolate(migratetype))) {
 		migratetype = get_pfnblock_migratetype(page, pfn);
 	}
+	/* 释放page */
 	__free_one_page(page, pfn, zone, order, migratetype, fpi_flags);
 	spin_unlock_irqrestore(&zone->lock, flags);
 
 	__count_vm_events(PGFREE, 1 << order);
 }
 
+/* 向buddy释放特定order的page */
 void __free_pages_core(struct page *page, unsigned int order)
 {
 	unsigned int nr_pages = 1 << order;
@@ -1674,6 +1690,7 @@ void __free_pages_core(struct page *page, unsigned int order)
 	 * refcount of all involved pages to 0.
 	 */
 	prefetchw(p);
+	/* 对每个page分别执行清除reserve标记，设置引用计数流程 */
 	for (loop = 0; loop < (nr_pages - 1); loop++, p++) {
 		prefetchw(p + 1);
 		__ClearPageReserved(p);
@@ -1682,12 +1699,14 @@ void __free_pages_core(struct page *page, unsigned int order)
 	__ClearPageReserved(p);
 	set_page_count(p, 0);
 
+	/* 更新该page对应zone的managed_pages计数 */
 	atomic_long_add(nr_pages, &page_zone(page)->managed_pages);
 
 	/*
 	 * Bypass PCP and place fresh pages right to the tail, primarily
 	 * relevant for memory onlining.
 	 */
+	/* 向buddy释放特定order的page */
 	__free_pages_ok(page, order, FPI_TO_TAIL | FPI_SKIP_KASAN_POISON);
 }
 
@@ -1743,11 +1762,13 @@ int __meminit early_pfn_to_nid(unsigned long pfn)
 }
 #endif /* CONFIG_NUMA */
 
+/* 向buddy释放特定order的page */
 void __init memblock_free_pages(struct page *page, unsigned long pfn,
 							unsigned int order)
 {
 	if (early_page_uninitialised(pfn))
 		return;
+	/* 向buddy释放特定order的page */
 	__free_pages_core(page, order);
 }
 
@@ -3929,18 +3950,21 @@ bool zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 					zone_page_state(z, NR_FREE_PAGES));
 }
 
+/* 判断watermark是否ok */
 static inline bool zone_watermark_fast(struct zone *z, unsigned int order,
 				unsigned long mark, int highest_zoneidx,
 				unsigned int alloc_flags, gfp_t gfp_mask)
 {
 	long free_pages;
 
+	/* 获取该zone空闲page数量 */
 	free_pages = zone_page_state(z, NR_FREE_PAGES);
 
 	/*
 	 * Fast check for order-0 only. If this fails then the reserves
 	 * need to be calculated.
 	 */
+	/* 处理order为0的情形 */
 	if (!order) {
 		long fast_free;
 
@@ -4049,6 +4073,7 @@ static inline unsigned int gfp_to_alloc_flags_cma(gfp_t gfp_mask,
  * get_page_from_freelist goes through the zonelist trying to allocate
  * a page.
  */
+/* 从free链表中获取page */
 static struct page *
 get_page_from_freelist(gfp_t gfp_mask, unsigned int order, int alloc_flags,
 						const struct alloc_context *ac)
@@ -4070,6 +4095,9 @@ retry:
 		struct page *page;
 		unsigned long mark;
 
+		/* 使能了cpuset，且分配标志包含ALLOC_CPUSET，则判断cpuset
+		   是否允许在该node分配 
+		*/
 		if (cpusets_enabled() &&
 			(alloc_flags & ALLOC_CPUSET) &&
 			!__cpuset_zone_allowed(zone, gfp_mask))
@@ -5350,6 +5378,7 @@ EXPORT_SYMBOL_GPL(__alloc_pages_bulk);
 /*
  * This is the 'heart' of the zoned buddy allocator.
  */
+/* 页面分配接口 */
 struct page *__alloc_pages(gfp_t gfp, unsigned int order, int preferred_nid,
 							nodemask_t *nodemask)
 {
@@ -5362,11 +5391,13 @@ struct page *__alloc_pages(gfp_t gfp, unsigned int order, int preferred_nid,
 	 * There are several places where we assume that the order value is sane
 	 * so bail out early if the request is out of bound.
 	 */
+	/* 错误参数 */
 	if (unlikely(order >= MAX_ORDER)) {
 		WARN_ON_ONCE(!(gfp & __GFP_NOWARN));
 		return NULL;
 	}
 
+	/* gfp调整 */
 	gfp &= gfp_allowed_mask;
 	/*
 	 * Apply scoped allocation constraints. This is mainly about GFP_NOFS
@@ -5388,10 +5419,12 @@ struct page *__alloc_pages(gfp_t gfp, unsigned int order, int preferred_nid,
 	alloc_flags |= alloc_flags_nofragment(ac.preferred_zoneref->zone, gfp);
 
 	/* First allocation attempt */
+	/* 从free链表中获取page */
 	page = get_page_from_freelist(alloc_gfp, order, alloc_flags, &ac);
 	if (likely(page))
 		goto out;
 
+	/* 获取page失败 */
 	alloc_gfp = gfp;
 	ac.spread_dirty_pages = false;
 
@@ -5401,6 +5434,7 @@ struct page *__alloc_pages(gfp_t gfp, unsigned int order, int preferred_nid,
 	 */
 	ac.nodemask = nodemask;
 
+	/* 通过slowpath分配页面 */
 	page = __alloc_pages_slowpath(alloc_gfp, order, &ac);
 
 out:
@@ -6901,6 +6935,7 @@ static void __zone_set_pageset_high_and_batch(struct zone *zone, unsigned long h
 	struct per_cpu_pages *pcp;
 	int cpu;
 
+	/* 遍历所有的possible cpu */
 	for_each_possible_cpu(cpu) {
 		pcp = per_cpu_ptr(zone->per_cpu_pageset, cpu);
 		pageset_update(pcp, high, batch);
@@ -8251,6 +8286,7 @@ static int __init set_hashdist(char *str)
 __setup("hashdist=", set_hashdist);
 #endif
 
+/* 内存分配初始化 */
 void __init page_alloc_init(void)
 {
 	int ret;
@@ -9278,6 +9314,9 @@ void zone_pcp_update(struct zone *zone, int cpu_online)
  *
  * Must be paired with a call to zone_pcp_enable().
  */
+/* 通过设置high limit为0，且draining所有cpu的方式，disable给定
+   zone的pcplists。
+*/
 void zone_pcp_disable(struct zone *zone)
 {
 	mutex_lock(&pcp_batch_high_lock);

@@ -72,6 +72,7 @@ static inline bool oom_task_origin(const struct task_struct *p)
 	return p->signal->oom_flag_origin;
 }
 
+/* 该线程是否为oom victim线程 */
 static inline bool tsk_is_oom_victim(struct task_struct * tsk)
 {
 	return tsk->signal->oom_mm;

@@ -268,17 +268,23 @@ static void wb_min_max_ratio(struct bdi_writeback *wb,
  * Return: the node's number of pages potentially available for dirty
  * page cache.  This is the base value for the per-node dirty limits.
  */
+/* 可用于page cache的pages数量：
+   free pages + reclaimable pages - totalreserve_pages，即：
+   NR_FREE_PAGES + NR_INACTIVE_FILE + NR_ACTIVE_FILE - totalreserve_pages
+*/
 static unsigned long node_dirtyable_memory(struct pglist_data *pgdat)
 {
 	unsigned long nr_pages = 0;
 	int z;
 
+	/* 遍历该node的zone */
 	for (z = 0; z < MAX_NR_ZONES; z++) {
 		struct zone *zone = pgdat->node_zones + z;
 
+		/* 该zone是否含有内存 */
 		if (!populated_zone(zone))
 			continue;
-
+		/* 计算该node所有zone的空闲page数量 */
 		nr_pages += zone_page_state(zone, NR_FREE_PAGES);
 	}
 
@@ -287,8 +293,12 @@ static unsigned long node_dirtyable_memory(struct pglist_data *pgdat)
 	 * dirtyable, to prevent a situation where reclaim has to
 	 * clean pages in order to balance the zones.
 	 */
+	/* 保留给内核使用的page，不能被用为dirtyable内存，
+       用以避免回收时必须要clean pages以平衡zones
+	*/
 	nr_pages -= min(nr_pages, pgdat->totalreserve_pages);
 
+	/* 可以dirty的page还包括inactive file和active file的内存 */
 	nr_pages += node_page_state(pgdat, NR_INACTIVE_FILE);
 	nr_pages += node_page_state(pgdat, NR_ACTIVE_FILE);
 
@@ -467,6 +477,7 @@ void global_dirty_limits(unsigned long *pbackground, unsigned long *pdirty)
  * Return: the maximum number of dirty pages allowed in a node, based
  * on the node's dirtyable memory.
  */
+/* 一个node中允许的dirty page的最大值 */
 static unsigned long node_dirty_limit(struct pglist_data *pgdat)
 {
 	unsigned long node_memory = node_dirtyable_memory(pgdat);
@@ -492,6 +503,7 @@ static unsigned long node_dirty_limit(struct pglist_data *pgdat)
  * Return: %true when the dirty pages in @pgdat are within the node's
  * dirty limit, %false if the limit is exceeded.
  */
+/* 一个node是否位于其dirty limits之内 */
 bool node_dirty_ok(struct pglist_data *pgdat)
 {
 	unsigned long limit = node_dirty_limit(pgdat);
@@ -2168,6 +2180,7 @@ EXPORT_SYMBOL(tag_pages_for_writeback);
  *
  * Return: %0 on success, negative error code otherwise
  */
+/* 遍历给定address space的所有dirty页，并对其分别执行写回操作 */
 int write_cache_pages(struct address_space *mapping,
 		      struct writeback_control *wbc, writepage_t writepage,
 		      void *data)
@@ -2307,6 +2320,7 @@ EXPORT_SYMBOL(write_cache_pages);
  * Function used by generic_writepages to call the real writepage
  * function and set the mapping flags on error
  */
+/* 写回一个页 */
 static int __writepage(struct page *page, struct writeback_control *wbc,
 		       void *data)
 {
@@ -2344,6 +2358,7 @@ int generic_writepages(struct address_space *mapping,
 
 EXPORT_SYMBOL(generic_writepages);
 
+/* 写回所有的页面 */
 int do_writepages(struct address_space *mapping, struct writeback_control *wbc)
 {
 	int ret;
@@ -2351,6 +2366,7 @@ int do_writepages(struct address_space *mapping, struct writeback_control *wbc)
 	if (wbc->nr_to_write <= 0)
 		return 0;
 	while (1) {
+		/* 调用该mapping回调对用的writepages回调 */
 		if (mapping->a_ops->writepages)
 			ret = mapping->a_ops->writepages(mapping, wbc);
 		else
@@ -2374,6 +2390,7 @@ int do_writepages(struct address_space *mapping, struct writeback_control *wbc)
  *
  * Return: %0 on success, negative error code otherwise
  */
+/* 写回一个页 */
 int write_one_page(struct page *page)
 {
 	struct address_space *mapping = page->mapping;
@@ -2385,11 +2402,16 @@ int write_one_page(struct page *page)
 
 	BUG_ON(!PageLocked(page));
 
+	/* 等待所有与该page共享等待队列的page写回完成 */
 	wait_on_page_writeback(page);
 
 	if (clear_page_dirty_for_io(page)) {
 		get_page(page);
+		/* 调用该page对应mapping的writepage回调，执行写回操作。
+           该回调由不同的文件系统注册
+		*/
 		ret = mapping->a_ops->writepage(page, &wbc);
+		/* 等待写回操作完成 */
 		if (ret == 0)
 			wait_on_page_writeback(page);
 		put_page(page);
@@ -2571,6 +2593,7 @@ EXPORT_SYMBOL(redirty_page_for_writepage);
  * benefit of asynchronous memory errors who prefer a consistent dirty state.
  * This rule can be broken in some special cases, but should be better not to.
  */
+/* 将该页设置为dirty */
 int set_page_dirty(struct page *page)
 {
 	struct address_space *mapping = page_mapping(page);
@@ -2589,6 +2612,7 @@ int set_page_dirty(struct page *page)
 		 */
 		if (PageReclaim(page))
 			ClearPageReclaim(page);
+		/* 调用该page对应mapping的set_page_dirty操作函数 */
 		return mapping->a_ops->set_page_dirty(page);
 	}
 	if (!PageDirty(page)) {
@@ -2670,6 +2694,7 @@ EXPORT_SYMBOL(__cancel_dirty_page);
  * This incoherency between the page's dirty flag and xarray tag is
  * unfortunate, but it only exists while the page is locked.
  */
+/* 清除一个page的dirty标志 */
 int clear_page_dirty_for_io(struct page *page)
 {
 	struct address_space *mapping = page_mapping(page);
@@ -2778,6 +2803,7 @@ int __test_set_page_writeback(struct page *page, bool keep_write)
 	int ret, access_ret;
 
 	lock_page_memcg(page);
+	/* 写回操作设置了AS_NO_WRITEBACK_TAGS标志 */
 	if (mapping && mapping_use_writeback_tags(mapping)) {
 		XA_STATE(xas, &mapping->i_pages, page_index(page));
 		struct inode *inode = mapping->host;
@@ -2833,8 +2859,10 @@ EXPORT_SYMBOL(__test_set_page_writeback);
 /*
  * Wait for a page to complete writeback
  */
+/* 等待所有与该page共享等待队列的page写回完成 */
 void wait_on_page_writeback(struct page *page)
 {
+	/* 等待所有与该page共享等待队列的page写回完成，该操作不可中断 */
 	while (PageWriteback(page)) {
 		trace_wait_on_page_writeback(page, page_mapping(page));
 		wait_on_page_bit(page, PG_writeback);
@@ -2846,6 +2874,7 @@ EXPORT_SYMBOL_GPL(wait_on_page_writeback);
  * Wait for a page to complete writeback.  Returns -EINTR if we get a
  * fatal signal while waiting.
  */
+/* 等待该page对应的等待队列写回完成，该操作可被中断 */
 int wait_on_page_writeback_killable(struct page *page)
 {
 	while (PageWriteback(page)) {
@@ -2866,9 +2895,18 @@ EXPORT_SYMBOL_GPL(wait_on_page_writeback_killable);
  * that requires page contents to be held stable during writeback.  If so, then
  * it will wait for any pending writeback to complete.
  */
+/* 等待所有与该page共享等待队列的page写回完成
+   本函数确定与backing设备相关的给定page在写回过程中是否需要page内容保持稳定。
+   若需要，则其将会等待任何pending的写回操作完成
+*/
 void wait_for_stable_page(struct page *page)
 {
+	/* 若为huge page，则获取该huge page的头结点 */
 	page = thp_head(page);
+	/* 获取该page对应mapping的inode，并获取其super block的s_iflags，
+	   若其设置了SB_I_STABLE_WRITES标志，则需要等待写回完成。
+	   即在写回完成之前，不修改blk
+	*/
 	if (page->mapping->host->i_sb->s_iflags & SB_I_STABLE_WRITES)
 		wait_on_page_writeback(page);
 }

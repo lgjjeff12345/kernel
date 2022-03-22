@@ -18,6 +18,7 @@
 #include <asm/fixmap.h>
 #include <asm/early_ioremap.h>
 
+/* 该模块在伙伴系统初始化完成之前使用 */
 #ifdef CONFIG_MMU
 static int early_ioremap_debug __initdata;
 
@@ -72,18 +73,22 @@ static void __iomem *prev_map[FIX_BTMAPS_SLOTS] __initdata;
 static unsigned long prev_size[FIX_BTMAPS_SLOTS] __initdata;
 static unsigned long slot_virt[FIX_BTMAPS_SLOTS] __initdata;
 
+/* early ioramp初始化设置接口 */
 void __init early_ioremap_setup(void)
 {
 	int i;
 
+	/* 初始化pre_map统计结构 */
 	for (i = 0; i < FIX_BTMAPS_SLOTS; i++)
 		if (WARN_ON(prev_map[i]))
 			break;
 
+	/* 每个slot的起始虚拟地址 */
 	for (i = 0; i < FIX_BTMAPS_SLOTS; i++)
 		slot_virt[i] = __fix_to_virt(FIX_BTMAP_BEGIN - NR_FIX_BTMAPS*i);
 }
 
+/* 检查early ioremap是否有映射泄露，即在启动后还有未解除映射的map地址 */
 static int __init check_early_ioremap_leak(void)
 {
 	int count = 0;
@@ -102,6 +107,7 @@ static int __init check_early_ioremap_leak(void)
 }
 late_initcall(check_early_ioremap_leak);
 
+/* early ioremap实现 */
 static void __init __iomem *
 __early_ioremap(resource_size_t phys_addr, unsigned long size, pgprot_t prot)
 {
@@ -111,9 +117,11 @@ __early_ioremap(resource_size_t phys_addr, unsigned long size, pgprot_t prot)
 	enum fixed_addresses idx;
 	int i, slot;
 
+	/* 若系统已启动，则不应该再使用early接口 */
 	WARN_ON(system_state >= SYSTEM_RUNNING);
 
 	slot = -1;
+	/* 查找一个空闲的slot */
 	for (i = 0; i < FIX_BTMAPS_SLOTS; i++) {
 		if (!prev_map[i]) {
 			slot = i;
@@ -121,6 +129,7 @@ __early_ioremap(resource_size_t phys_addr, unsigned long size, pgprot_t prot)
 		}
 	}
 
+	/* slot查找失败 */
 	if (WARN(slot < 0, "%s(%pa, %08lx) not found slot\n",
 		 __func__, &phys_addr, size))
 		return NULL;
@@ -130,6 +139,7 @@ __early_ioremap(resource_size_t phys_addr, unsigned long size, pgprot_t prot)
 	if (WARN_ON(!size || last_addr < phys_addr))
 		return NULL;
 
+	/* 保存映射的size */
 	prev_size[slot] = size;
 	/*
 	 * Mappings have to be page-aligned

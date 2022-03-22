@@ -286,11 +286,13 @@ arch_initcall(reserve_memblock_reserved_regions);
 
 u64 __cpu_logical_map[NR_CPUS] = { [0 ... NR_CPUS-1] = INVALID_HWID };
 
+/* 获取cpu的物理id */
 u64 cpu_logical_map(unsigned int cpu)
 {
 	return __cpu_logical_map[cpu];
 }
 
+/* arm64的setup_arch函数 */
 void __init __no_sanitize_address setup_arch(char **cmdline_p)
 {
 	setup_initial_init_mm(_stext, _etext, _edata, _end);
@@ -395,10 +397,12 @@ static inline bool cpu_can_disable(unsigned int cpu)
 	return false;
 }
 
+/* numa拓扑初始化函数 */
 static int __init topology_init(void)
 {
 	int i;
 
+	/* 遍历所有online的numa节点，并分别注册 */
 	for_each_online_node(i)
 		register_one_node(i);
 
@@ -412,6 +416,7 @@ static int __init topology_init(void)
 }
 subsys_initcall(topology_init);
 
+/* dump kernel的kaslr偏移 */
 static void dump_kernel_offset(void)
 {
 	const unsigned long offset = kaslr_offset();
@@ -425,19 +430,25 @@ static void dump_kernel_offset(void)
 	}
 }
 
+/* arm64 panic通知回调函数 */
 static int arm64_panic_block_dump(struct notifier_block *self,
 				  unsigned long v, void *p)
 {
+	/* dump kernel的kaslr偏移 */
 	dump_kernel_offset();
+	/* dump cpu feature信息 */
 	dump_cpu_features();
+	/* dump内存的limit信息 */
 	dump_mem_limit();
 	return 0;
 }
 
+/* 通知block结构体 */
 static struct notifier_block arm64_panic_block = {
 	.notifier_call = arm64_panic_block_dump
 };
 
+/* arm64架构注册panic通知 */
 static int __init register_arm64_panic_block(void)
 {
 	atomic_notifier_chain_register(&panic_notifier_list,

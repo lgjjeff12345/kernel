@@ -190,6 +190,7 @@ static int __init set_reset_devices(char *str)
 __setup("reset_devices", set_reset_devices);
 
 static const char *argv_init[MAX_INIT_ARGS+2] = { "init", NULL, };
+/* init进程的环境变量，home目录为根目录，TERM为linux */
 const char *envp_init[MAX_INIT_ENVS+2] = { "HOME=/", "TERM=linux", NULL, };
 static const char *panic_later, *panic_param;
 
@@ -701,6 +702,7 @@ noinline void __ref rest_init(void)
 	 * CONFIG_PREEMPT_VOLUNTARY=y the init task might have scheduled
 	 * already, but it's stuck on the kthreadd_done completion.
 	 */
+	/* 系统开始调度 */
 	system_state = SYSTEM_SCHEDULING;
 
 	complete(&kthreadd_done);
@@ -711,6 +713,7 @@ noinline void __ref rest_init(void)
 	 */
 	schedule_preempt_disabled();
 	/* Call into cpu_idle with preempt disabled */
+	/* 进入idle线程 */
 	cpu_startup_entry(CPUHP_ONLINE);
 }
 
@@ -1112,6 +1115,7 @@ asmlinkage __visible void __init __no_sanitize_address start_kernel(void)
 	poking_init();
 	check_bugs();
 
+
 	acpi_subsystem_init();
 	arch_post_acpi_subsys_init();
 	kcsan_init();
@@ -1400,11 +1404,14 @@ static void __init do_pre_smp_initcalls(void)
 		do_one_initcall(initcall_from_entry(fn));
 }
 
+/* 执行init程序 */
 static int run_init_process(const char *init_filename)
 {
 	const char *const *p;
 
+	/* init进程执行参数即为init文件路径名 */
 	argv_init[0] = init_filename;
+	/* 打印init程序 */
 	pr_info("Run %s as init process\n", init_filename);
 	pr_debug("  with arguments:\n");
 	for (p = argv_init; *p; p++)
@@ -1412,9 +1419,11 @@ static int run_init_process(const char *init_filename)
 	pr_debug("  with environment:\n");
 	for (p = envp_init; *p; p++)
 		pr_debug("    %s\n", *p);
+	/* 调用execve执行init进程 */
 	return kernel_execve(init_filename, argv_init, envp_init);
 }
 
+/* 执行init程序 */
 static int try_to_run_init_process(const char *init_filename)
 {
 	int ret;
@@ -1473,6 +1482,7 @@ void __weak free_initmem(void)
 	free_initmem_default(POISON_FREE_INITMEM);
 }
 
+/* init线程执行函数 */
 static int __ref kernel_init(void *unused)
 {
 	int ret;
@@ -1480,6 +1490,7 @@ static int __ref kernel_init(void *unused)
 	/*
 	 * Wait until kthreadd is all set-up.
 	 */
+	/* 等待kthreadd设置完成，并唤醒我们 */
 	wait_for_completion(&kthreadd_done);
 
 	kernel_init_freeable();
@@ -1497,6 +1508,7 @@ static int __ref kernel_init(void *unused)
 	 */
 	pti_finalize();
 
+	/* 系统正在启动，此时内存已初始化完成 */
 	system_state = SYSTEM_RUNNING;
 	numa_default_policy();
 
@@ -1504,6 +1516,7 @@ static int __ref kernel_init(void *unused)
 
 	do_sysctl_args();
 
+	/* 若设置了rdinit参数，则执行该参数指定的init进程 */
 	if (ramdisk_execute_command) {
 		ret = run_init_process(ramdisk_execute_command);
 		if (!ret)
@@ -1518,6 +1531,7 @@ static int __ref kernel_init(void *unused)
 	 * The Bourne shell can be used instead of init if we are
 	 * trying to recover a really broken machine.
 	 */
+	/* 若设置了init参数，则执行该参数指定的init进程 */
 	if (execute_command) {
 		ret = run_init_process(execute_command);
 		if (!ret)
@@ -1526,6 +1540,7 @@ static int __ref kernel_init(void *unused)
 		      execute_command, ret);
 	}
 
+	/* 若配置了default init程序，则执行该default程序 */
 	if (CONFIG_DEFAULT_INIT[0] != '\0') {
 		ret = run_init_process(CONFIG_DEFAULT_INIT);
 		if (ret)
@@ -1535,6 +1550,7 @@ static int __ref kernel_init(void *unused)
 			return 0;
 	}
 
+	/* 依次执行可能的init程序 */
 	if (!try_to_run_init_process("/sbin/init") ||
 	    !try_to_run_init_process("/etc/init") ||
 	    !try_to_run_init_process("/bin/init") ||
@@ -1563,6 +1579,7 @@ void __init console_on_rootfs(void)
 static noinline void __init kernel_init_freeable(void)
 {
 	/* Now the scheduler is fully set up and can do blocking allocations */
+	/* 现在调度器已经设置完成，可以使用阻塞式分配了 */
 	gfp_allowed_mask = __GFP_BITS_MASK;
 
 	/*

@@ -388,6 +388,15 @@ static inline void __nodes_fold(nodemask_t *dstp, const nodemask_t *origp,
 /*
  * Bitmasks that are kept for all the nodes.
  */
+/* numa node的状态
+   N_POSSIBLE：该节点在适当的时候可以转换为online
+   N_ONLINE：该节点处于online状态
+   N_NORMAL_MEMORY：该节点含有regular内存
+   N_HIGH_MEMORY：该节点含有regular或high内存
+   N_MEMORY：该节点含有regular，high或movable内存
+   N_CPU：node含有一个或多个cpu
+   N_GENERIC_INITIATOR：node含有一个或多个通用的Initiators
+*/
 enum node_states {
 	N_POSSIBLE,		/* The node could become online at some point */
 	N_ONLINE,		/* The node is online */
@@ -411,21 +420,25 @@ enum node_states {
 extern nodemask_t node_states[NR_NODE_STATES];
 
 #if MAX_NUMNODES > 1
+/* 判断node状态是否匹配 */
 static inline int node_state(int node, enum node_states state)
 {
 	return node_isset(node, node_states[state]);
 }
 
+/* 设置node的状态 */
 static inline void node_set_state(int node, enum node_states state)
 {
 	__node_set(node, &node_states[state]);
 }
 
+/* 清除node状态 */
 static inline void node_clear_state(int node, enum node_states state)
 {
 	__node_clear(node, &node_states[state]);
 }
 
+/* 处于该state的node数量 */
 static inline int num_node_state(enum node_states state)
 {
 	return nodes_weight(node_states[state]);

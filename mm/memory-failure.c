@@ -1612,6 +1612,16 @@ out:
  * Must run in process context (e.g. a work queue) with interrupts
  * enabled and no spinlocks hold.
  */
+/* 处理一个page的内存失败接口
+   该函数在架构低级的machine check代码检测到一个page的硬件内存损坏后
+   调用。它会尽量尝试恢复系统，如drop pages，杀死进程等。
+
+   该函数主要用于在当前执行上下文之外发生的损坏（如检测到一个后台
+   scrubber）
+
+   该函数必须要在进程上下文调用（如work queue），需要使能中断，且
+   没有持有spinlock
+*/
 int memory_failure(unsigned long pfn, int flags)
 {
 	struct page *p;
@@ -1858,6 +1868,7 @@ void memory_failure_queue(unsigned long pfn, int flags)
 }
 EXPORT_SYMBOL_GPL(memory_failure_queue);
 
+/* 内存failure的work函数 */
 static void memory_failure_work_func(struct work_struct *work)
 {
 	struct memory_failure_cpu *mf_cpu;
@@ -1865,9 +1876,11 @@ static void memory_failure_work_func(struct work_struct *work)
 	unsigned long proc_flags;
 	int gotten;
 
+	/* 获取其管理结构体 */
 	mf_cpu = container_of(work, struct memory_failure_cpu, work);
 	for (;;) {
 		spin_lock_irqsave(&mf_cpu->lock, proc_flags);
+		/* 从kfifo中获取数据，并根据其flag不同，分别执行相应处理函数 */
 		gotten = kfifo_get(&mf_cpu->fifo, &entry);
 		spin_unlock_irqrestore(&mf_cpu->lock, proc_flags);
 		if (!gotten)
@@ -1883,6 +1896,7 @@ static void memory_failure_work_func(struct work_struct *work)
  * Process memory_failure work queued on the specified CPU.
  * Used to avoid return-to-userspace racing with the memory_failure workqueue.
  */
+/* 在指定cpu上执行work的入队操作 */
 void memory_failure_queue_kick(int cpu)
 {
 	struct memory_failure_cpu *mf_cpu;
@@ -1892,15 +1906,19 @@ void memory_failure_queue_kick(int cpu)
 	memory_failure_work_func(&mf_cpu->work);
 }
 
+/* 内存失败模块初始化 */
 static int __init memory_failure_init(void)
 {
 	struct memory_failure_cpu *mf_cpu;
 	int cpu;
 
+	/* 对每个possible cpu分别调用以下接口 */
 	for_each_possible_cpu(cpu) {
 		mf_cpu = &per_cpu(memory_failure_cpu, cpu);
 		spin_lock_init(&mf_cpu->lock);
+		/* 初始化kfifo */
 		INIT_KFIFO(mf_cpu->fifo);
+		/* 初始化work */
 		INIT_WORK(&mf_cpu->work, memory_failure_work_func);
 	}
 
@@ -2164,6 +2182,7 @@ static void put_ref_page(struct page *page)
  * This is not a 100% solution for all memory, but tries to be
  * ``good enough'' for the majority of memory.
  */
+/* soft offline一个page */
 int soft_offline_page(unsigned long pfn, int flags)
 {
 	int ret;
@@ -2178,12 +2197,14 @@ int soft_offline_page(unsigned long pfn, int flags)
 		ref_page = pfn_to_page(pfn);
 
 	/* Only online pages can be soft-offlined (esp., not ZONE_DEVICE). */
+	/* 该pfn是否为online page */
 	page = pfn_to_online_page(pfn);
 	if (!page) {
 		put_ref_page(ref_page);
 		return -EIO;
 	}
 
+	/* 该page是否已经设置了PAGE_POISON_PATTERN标志 */
 	if (PageHWPoison(page)) {
 		pr_info("%s: %#lx page already poisoned\n", __func__, pfn);
 		put_ref_page(ref_page);

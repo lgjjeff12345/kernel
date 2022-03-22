@@ -19,6 +19,7 @@
 long compat_arm_syscall(struct pt_regs *regs, int scno);
 long sys_ni_syscall(void);
 
+/* non implementation的中断处理 */
 static long do_ni_syscall(struct pt_regs *regs, int scno)
 {
 #ifdef CONFIG_COMPAT
@@ -33,6 +34,7 @@ static long do_ni_syscall(struct pt_regs *regs, int scno)
 	return sys_ni_syscall();
 }
 
+/* 调用系统调用对应的处理函数 */
 static long __invoke_syscall(struct pt_regs *regs, syscall_fn_t syscall_fn)
 {
 	return syscall_fn(regs);
@@ -49,11 +51,14 @@ static void invoke_syscall(struct pt_regs *regs, unsigned int scno,
 	if (scno < sc_nr) {
 		syscall_fn_t syscall_fn;
 		syscall_fn = syscall_table[array_index_nospec(scno, sc_nr)];
+		/* 调用系统调用对应的处理函数 */
 		ret = __invoke_syscall(regs, syscall_fn);
 	} else {
+		/* non implementation系统调用的处理 */
 		ret = do_ni_syscall(regs, scno);
 	}
 
+	/* 设置系统调用的返回值 */
 	syscall_set_return_value(current, regs, 0, ret);
 
 	/*

@@ -102,6 +102,7 @@
 #define ESR_ELx_S1PTW		(UL(1) << ESR_ELx_S1PTW_SHIFT)
 
 /* Shared ISS fault status code(IFSC/DFSC) for Data/Instruction aborts */
+/* 数据、指令abort的类型 */
 #define ESR_ELx_FSC		(0x3F)
 #define ESR_ELx_FSC_TYPE	(0x3C)
 #define ESR_ELx_FSC_LEVEL	(0x03)

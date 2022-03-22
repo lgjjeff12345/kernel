@@ -207,6 +207,7 @@ static DEFINE_RAW_SPINLOCK(die_lock);
 /*
  * This function is protected against re-entrancy.
  */
+/* 将系统挂死 */
 void die(const char *str, struct pt_regs *regs, int err)
 {
 	int ret;
@@ -214,6 +215,7 @@ void die(const char *str, struct pt_regs *regs, int err)
 
 	raw_spin_lock_irqsave(&die_lock, flags);
 
+	/* 进入oops */
 	oops_enter();
 
 	console_verbose();
@@ -286,17 +288,24 @@ void arm64_force_sig_ptrace_errno_trap(int errno, unsigned long far,
 	force_sig_ptrace_errno_trap(errno, (void __user *)far);
 }
 
+/* 用户态：发送信号杀死线程
+   内核态：系统挂死
+*/
 void arm64_notify_die(const char *str, struct pt_regs *regs,
 		      int signo, int sicode, unsigned long far,
 		      int err)
 {
 	if (user_mode(regs)) {
+		/* 用户模式，发送信号 */
 		WARN_ON(regs != current_pt_regs());
+		/* 设置线程的fault address和fault code */
 		current->thread.fault_address = 0;
 		current->thread.fault_code = err;
 
+		/* 发送信号 */
 		arm64_force_sig_fault(signo, sicode, far, str);
 	} else {
+		/* 内核错误，直接die */
 		die(str, regs, err);
 	}
 }
@@ -635,6 +644,10 @@ struct sys64_hook {
 	void (*handler)(unsigned int esr, struct pt_regs *regs);
 };
 
+/* 用户态调用系统操作函数的功能
+   如：el0 cache操作，读CTR_EL0寄存器，读CNTVCT寄存器，
+   读CNTFRQ寄存器，访问CPUID寄存器，触发WFI指令等
+*/
 static const struct sys64_hook sys64_hooks[] = {
 	{
 		.esr_mask = ESR_ELx_SYS64_ISS_EL0_CACHE_OP_MASK,
@@ -773,6 +786,10 @@ void do_cp15instr(unsigned int esr, struct pt_regs *regs)
 NOKPROBE_SYMBOL(do_cp15instr);
 #endif
 
+/* 用户态执行硬件相关的系统操作，
+   如：el0 cache操作，读CTR_EL0寄存器，读CNTVCT寄存器，
+   读CNTFRQ寄存器，访问CPUID寄存器，触发WFI指令等
+*/
 void do_sysinstr(unsigned int esr, struct pt_regs *regs)
 {
 	const struct sys64_hook *hook;

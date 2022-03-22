@@ -61,6 +61,7 @@ EXPORT_SYMBOL(cpumask_of_node);
 
 #endif
 
+/* 更新numa节点对应的cpu掩码 */
 static void numa_update_cpu(unsigned int cpu, bool remove)
 {
 	int nid = cpu_to_node(cpu);
@@ -74,11 +75,13 @@ static void numa_update_cpu(unsigned int cpu, bool remove)
 		cpumask_set_cpu(cpu, node_to_cpumask_map[nid]);
 }
 
+/* 向numa节点添加cpu */
 void numa_add_cpu(unsigned int cpu)
 {
 	numa_update_cpu(cpu, false);
 }
 
+/* 从numa节点删除cpu */
 void numa_remove_cpu(unsigned int cpu)
 {
 	numa_update_cpu(cpu, true);

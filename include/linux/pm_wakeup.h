@@ -40,26 +40,44 @@ struct wake_irq;
  * @active: Status of the wakeup source.
  * @autosleep_enabled: Autosleep is active, so update @prevent_sleep_time.
  */
+/* 唤醒源结构体 */
 struct wakeup_source {
+	/* 唤醒源的名字 */
 	const char 		*name;
+	/* 唤醒源的id */
 	int			id;
+	/* 链表节点 */
 	struct list_head	entry;
 	spinlock_t		lock;
+	/* 可选的设备特定的唤醒中断 */
 	struct wake_irq		*wakeirq;
+	/* 唤醒定时器链表 */
 	struct timer_list	timer;
+	/* 唤醒定时器超时时间 */
 	unsigned long		timer_expires;
+	/* 该唤醒源已经活动的总时间 */
 	ktime_t total_time;
+	/* 该唤醒源持续active的最大时间 */
 	ktime_t max_time;
+	/* 唤醒源上一次到期时间的Monotonic时间 */
 	ktime_t last_time;
 	ktime_t start_prevent_time;
+	/* 该唤醒源阻止autosleep的总时间 */
 	ktime_t prevent_sleep_time;
+	/* signaled唤醒源数量 */
 	unsigned long		event_count;
+	/* 唤醒源被激活的总数量 */
 	unsigned long		active_count;
+	/* 唤醒源deactivate的总数量 */
 	unsigned long		relax_count;
+	/* 唤醒的超时总数目 */
 	unsigned long		expire_count;
+	/* 唤醒源可能abort suspend的总数目 */
 	unsigned long		wakeup_count;
 	struct device		*dev;
+	/* 唤醒源的状态 */
 	bool			active:1;
+	/* Autosleep被激活，因此更新prevent_sleep_time */
 	bool			autosleep_enabled:1;
 };
 
@@ -79,6 +97,9 @@ static inline bool device_can_wakeup(struct device *dev)
 	return dev->power.can_wakeup;
 }
 
+/* 判断该设备是否可被唤醒
+   can_wakeup标志被设置且唤醒源wakeup存在
+*/
 static inline bool device_may_wakeup(struct device *dev)
 {
 	return dev->power.can_wakeup && !!dev->power.wakeup;
@@ -174,6 +195,9 @@ static inline int device_init_wakeup(struct device *dev, bool val)
 	return 0;
 }
 
+/* 判断该设备是否可被唤醒
+   can_wakeup及should_wakeup标志被设置
+*/
 static inline bool device_may_wakeup(struct device *dev)
 {
 	return dev->power.can_wakeup && dev->power.should_wakeup;

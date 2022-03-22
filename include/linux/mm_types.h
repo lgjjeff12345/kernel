@@ -61,13 +61,29 @@ struct mem_cgroup;
  * boundaries, and ensure that 'freelist' is aligned within the
  * struct.
  */
+/* 系统中的每个物理页都含有一个page结构体，我们没办法跟踪哪些task正在使用
+   这个page，虽然对于pagecache页，rmap结构可以获取到谁正在映射它。
+
+   若通过alloc_pages分配页面，可以使用结构体中的一些空间作为私有目的使用。
+   main union中的五个word，除了第一个word的bit 0必须清零外都可以使用。很多
+   用户使用使用该word存储一个指向确保对齐的对象，若你使用与page->mapping
+   相同的存储，则必须在释放page时将其重置为NULL
+
+   若该page没有被映射到用户空间，也可以使用mapcount union中的4个字节，但
+   在释放之前必须调用page_mapcount_reset()函数
+
+   若你希望使用refcount field，必须在其它cpu临时正价或减少refcount时不会
+   引起问题。
+*/
 #ifdef CONFIG_HAVE_ALIGNED_STRUCT_PAGE
 #define _struct_page_alignment	__aligned(2 * sizeof(unsigned long))
 #else
 #define _struct_page_alignment
 #endif
 
+/* page结构体 */
 struct page {
+	/* 该页的标志 */
 	unsigned long flags;		/* Atomic flags, some possibly
 					 * updated asynchronously */
 	/*
@@ -85,6 +101,7 @@ struct page {
 			 */
 			struct list_head lru;
 			/* See page-flags.h for PAGE_MAPPING_FLAGS */
+			/* 该page对应的address space */
 			struct address_space *mapping;
 			pgoff_t index;		/* Our offset within mapping. */
 			/**
@@ -137,6 +154,9 @@ struct page {
 			};
 		};
 		struct {	/* Tail pages of compound page */
+			/* bit 0设置表明compound_head - 1是compound页的头。
+               否则表示该page不是compound页
+			*/
 			unsigned long compound_head;	/* Bit zero is set */
 
 			/* First tail page only */
@@ -308,16 +328,20 @@ struct vm_userfaultfd_ctx {};
  * space that has a special rule for the page-fault handlers (ie a shared
  * library, the executable area etc).
  */
+/* 该结构体描述一个虚拟地址区间，vm区间是进程虚拟地址空间的任意部分，且
+   含有特定的page-fault处理规则（如一个共享库，可执行区域等）。
+*/
 struct vm_area_struct {
 	/* The first cache line has the info for VMA tree walking. */
-
+	/* 起始和结束虚拟地址 */
 	unsigned long vm_start;		/* Our start address within vm_mm. */
 	unsigned long vm_end;		/* The first byte after our end address
 					   within vm_mm. */
 
 	/* linked list of VM areas per task, sorted by address */
+	/* 该vma的链表前后节点 */
 	struct vm_area_struct *vm_next, *vm_prev;
-
+	/* 红黑树节点 */
 	struct rb_node vm_rb;
 
 	/*
@@ -326,23 +350,32 @@ struct vm_area_struct {
 	 * VMAs below us in the VMA rbtree and its ->vm_prev. This helps
 	 * get_unmapped_area find a free area of the right size.
 	 */
+	/* 到其左边vma的最大空闲内存gap（字节为单位）。要么处于本vma与vma->vm_prev
+       之间，或者处于vma rbtree中我们下面的一个vma与它的vm->prev之间。
+       它可被get_unmapped_area用于找到正确大小的空闲区域
+	*/
 	unsigned long rb_subtree_gap;
 
 	/* Second cache line starts here. */
-
+	/* 该vm所属的进程地址空间 */
 	struct mm_struct *vm_mm;	/* The address space we belong to. */
 
 	/*
 	 * Access permissions of this VMA.
 	 * See vmf_insert_mixed_prot() for discussion.
 	 */
+	/* 该vma的访问权限 */
 	pgprot_t vm_page_prot;
+	/* vm的标志 */
 	unsigned long vm_flags;		/* Flags, see mm.h. */
 
 	/*
 	 * For areas with an address space and backing store,
 	 * linkage into the address_space->i_mmap interval tree.
 	 */
+	/* 对于包含backing store地址空间的区域，将其链接到
+       address_space->i_mmap interval树
+	*/
 	struct {
 		struct rb_node rb;
 		unsigned long rb_subtree_last;
@@ -354,17 +387,26 @@ struct vm_area_struct {
 	 * can only be in the i_mmap tree.  An anonymous MAP_PRIVATE, stack
 	 * or brk vma (with NULL file) can only be in an anon_vma list.
 	 */
+	/* 一个文件的MAP_PRIVATE vma可以同时位于i_mmap树和anon_vma链表中，
+       MAP_SHARED vma只能位于i_mmap树中。
+       匿名的MAP_PRIVATE，栈或brk vma只能位于anon_vma链表中
+	*/
 	struct list_head anon_vma_chain; /* Serialized by mmap_lock &
 					  * page_table_lock */
 	struct anon_vma *anon_vma;	/* Serialized by page_table_lock */
 
 	/* Function pointers to deal with this struct. */
+	/* vm操作结构体，匿名页该指针为null */
 	const struct vm_operations_struct *vm_ops;
 
 	/* Information about our backing store: */
+	/* backing store相关的信息 */
+	/* 以PAGE_SIZE为单位的偏移 */
 	unsigned long vm_pgoff;		/* Offset (within vm_file) in PAGE_SIZE
 					   units */
+	/* 映射到的文件结构体指针 */
 	struct file * vm_file;		/* File we map to (can be NULL). */
+	/* vm私有数据 */
 	void * vm_private_data;		/* was vm_pte (shared mem) */
 
 #ifdef CONFIG_SWAP
@@ -373,17 +415,21 @@ struct vm_area_struct {
 #ifndef CONFIG_MMU
 	struct vm_region *vm_region;	/* NOMMU mapping region */
 #endif
+	/* vma的numa内存分配策略 */
 #ifdef CONFIG_NUMA
 	struct mempolicy *vm_policy;	/* NUMA policy for the VMA */
 #endif
+	/* userfaultfd提供了通过用户空间处理page fault的功能 */
 	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
 } __randomize_layout;
 
+/* 用于coredump */
 struct core_thread {
 	struct task_struct *task;
 	struct core_thread *next;
 };
 
+/* core的状态，用于core dump */
 struct core_state {
 	atomic_t nr_threads;
 	struct core_thread dumper;
@@ -391,16 +437,21 @@ struct core_state {
 };
 
 struct kioctx_table;
+/* 进程地址空间 */
 struct mm_struct {
 	struct {
+		/* vma链表 */
 		struct vm_area_struct *mmap;		/* list of VMAs */
+		/* vma红黑树 */
 		struct rb_root mm_rb;
 		u64 vmacache_seqnum;                   /* per-thread vmacache */
 #ifdef CONFIG_MMU
+		/* 获取未映射的区域 */
 		unsigned long (*get_unmapped_area) (struct file *filp,
 				unsigned long addr, unsigned long len,
 				unsigned long pgoff, unsigned long flags);
 #endif
+		/* mmap区域的base */
 		unsigned long mmap_base;	/* base of mmap area */
 		unsigned long mmap_legacy_base;	/* base of mmap area in bottom-up allocations */
 #ifdef CONFIG_HAVE_ARCH_COMPAT_MMAP_BASES
@@ -408,7 +459,9 @@ struct mm_struct {
 		unsigned long mmap_compat_base;
 		unsigned long mmap_compat_legacy_base;
 #endif
+		/* 任务的vm空间size */
 		unsigned long task_size;	/* size of task vm space */
+		/* 最高的vm结束地址 */
 		unsigned long highest_vm_end;	/* highest vma end address */
 		pgd_t * pgd;
 
@@ -470,16 +523,22 @@ struct mm_struct {
 					  * by mmlist_lock
 					  */
 
-
+		/* rss使用的highwater */
 		unsigned long hiwater_rss; /* High-watermark of RSS usage */
+		/* 虚拟地址使用的highwater */
 		unsigned long hiwater_vm;  /* High-water virtual memory usage */
 
+		/* 已映射的总page */
 		unsigned long total_vm;	   /* Total pages mapped */
 		unsigned long locked_vm;   /* Pages that have PG_mlocked set */
 		atomic64_t    pinned_vm;   /* Refcount permanently increased */
+		/* 数据段的vm，可写，非共享，非stack */
 		unsigned long data_vm;	   /* VM_WRITE & ~VM_SHARED & ~VM_STACK */
+		/* 代码段的vm，可执行，不可写，非stack */
 		unsigned long exec_vm;	   /* VM_EXEC & ~VM_WRITE & ~VM_STACK */
+		/* 栈段的vm，stack */
 		unsigned long stack_vm;	   /* VM_STACK */
+		/* 默认标志 */
 		unsigned long def_flags;
 
 		/**
@@ -491,6 +550,7 @@ struct mm_struct {
 
 		spinlock_t arg_lock; /* protect the below fields */
 
+		/* 代码段，数据段，堆段，栈段。以及参数和环境变量的地址 */
 		unsigned long start_code, end_code, start_data, end_data;
 		unsigned long start_brk, brk, start_stack;
 		unsigned long arg_start, arg_end, env_start, env_end;
@@ -501,17 +561,22 @@ struct mm_struct {
 		 * Special counters, in some configurations protected by the
 		 * page_table_lock, in other configurations by being atomic.
 		 */
+		/* rss统计信息 */
 		struct mm_rss_stat rss_stat;
 
+		/* 该结构体定义了用于加载linux支持的二进制格式的回调 */
 		struct linux_binfmt *binfmt;
 
 		/* Architecture-specific MM context */
+		/* 架构定义的mm上下文 */
 		mm_context_t context;
 
 		unsigned long flags; /* Must use atomic bitops to access */
 
+		/* core的状态，用于core dump */
 		struct core_state *core_state; /* coredumping support */
 
+		/* 用于异步IO */
 #ifdef CONFIG_AIO
 		spinlock_t			ioctx_lock;
 		struct kioctx_table __rcu	*ioctx_table;
@@ -529,6 +594,7 @@ struct mm_struct {
 		 */
 		struct task_struct __rcu *owner;
 #endif
+		/* 用户的命名空间 */
 		struct user_namespace *user_ns;
 
 		/* store ref to file /proc/<pid>/exe symlink points to */
@@ -558,17 +624,23 @@ struct mm_struct {
 		 * that can move process memory needs to flush the TLB when
 		 * moving a PROT_NONE or PROT_NUMA mapped page.
 		 */
+		/* 批tlb flush操作正在进行，任何进程内存的移动都需要刷新tlb。
+		   tlb刷新pending状态
+         */
 		atomic_t tlb_flush_pending;
 #ifdef CONFIG_ARCH_WANT_BATCHED_UNMAP_TLB_FLUSH
 		/* See flush_tlb_batched_pending() */
 		bool tlb_flush_batched;
 #endif
+		/* uprobe状态 */
 		struct uprobes_state uprobes_state;
 #ifdef CONFIG_HUGETLB_PAGE
 		atomic_long_t hugetlb_usage;
 #endif
+		/* 异步put工作 */
 		struct work_struct async_put_work;
 
+		/* pasid参数 */
 #ifdef CONFIG_IOMMU_SUPPORT
 		u32 pasid;
 #endif
@@ -578,21 +650,25 @@ struct mm_struct {
 	 * The mm_cpumask needs to be at the end of mm_struct, because it
 	 * is dynamically sized based on nr_cpu_ids.
 	 */
+	/* cpu位表 */
 	unsigned long cpu_bitmap[];
 };
 
 extern struct mm_struct init_mm;
 
 /* Pointer magic because the dynamic array size confuses some compilers. */
+/* 初始化mm的cpu位表 */
 static inline void mm_init_cpumask(struct mm_struct *mm)
 {
 	unsigned long cpu_bitmap = (unsigned long)mm;
 
 	cpu_bitmap += offsetof(struct mm_struct, cpu_bitmap);
+	/* 清空bitmap */
 	cpumask_clear((struct cpumask *)cpu_bitmap);
 }
 
 /* Future-safe accessor for struct mm_struct's cpu_vm_mask. */
+/* 获取mm的cpu位表 */
 static inline cpumask_t *mm_cpumask(struct mm_struct *mm)
 {
 	return (struct cpumask *)&mm->cpu_bitmap;
@@ -603,11 +679,13 @@ extern void tlb_gather_mmu(struct mmu_gather *tlb, struct mm_struct *mm);
 extern void tlb_gather_mmu_fullmm(struct mmu_gather *tlb, struct mm_struct *mm);
 extern void tlb_finish_mmu(struct mmu_gather *tlb);
 
+/* 初始化tlb刷新计数 */
 static inline void init_tlb_flush_pending(struct mm_struct *mm)
 {
 	atomic_set(&mm->tlb_flush_pending, 0);
 }
 
+/* 增加pending tlb刷新计数 */
 static inline void inc_tlb_flush_pending(struct mm_struct *mm)
 {
 	atomic_inc(&mm->tlb_flush_pending);
@@ -649,6 +727,7 @@ static inline void inc_tlb_flush_pending(struct mm_struct *mm)
 	 */
 }
 
+/* 减少pending tlb刷新计数 */
 static inline void dec_tlb_flush_pending(struct mm_struct *mm)
 {
 	/*
@@ -662,6 +741,7 @@ static inline void dec_tlb_flush_pending(struct mm_struct *mm)
 	atomic_dec(&mm->tlb_flush_pending);
 }
 
+/* 是否有pending的tlb刷新操作 */
 static inline bool mm_tlb_flush_pending(struct mm_struct *mm)
 {
 	/*
@@ -675,6 +755,7 @@ static inline bool mm_tlb_flush_pending(struct mm_struct *mm)
 	return atomic_read(&mm->tlb_flush_pending);
 }
 
+/* 判断mm的tlb刷新是否嵌套 */
 static inline bool mm_tlb_flush_nested(struct mm_struct *mm)
 {
 	/*
@@ -721,6 +802,9 @@ typedef __bitwise unsigned int vm_fault_t;
  * @VM_FAULT_HINDEX_MASK:	mask HINDEX value
  *
  */
+/* vm fault原因
+   VM_FAULT_OOM：OOM
+*/
 enum vm_fault_reason {
 	VM_FAULT_OOM            = (__force vm_fault_t)0x000001,
 	VM_FAULT_SIGBUS         = (__force vm_fault_t)0x000002,
@@ -784,6 +868,12 @@ struct vm_special_mapping {
 		     struct vm_area_struct *new_vma);
 };
 
+/* tlb刷新的原因
+   TLB_FLUSH_ON_TASK_SWITCH：进程切换
+   TLB_REMOTE_SHOOTDOWN：远程shootdown    ？？？ 是否为shut down
+   TLB_LOCAL_SHOOTDOWN：本地shootdown
+   TLB_REMOTE_SEND_IPI：远程发送IPI
+*/
 enum tlb_flush_reason {
 	TLB_FLUSH_ON_TASK_SWITCH,
 	TLB_REMOTE_SHOOTDOWN,

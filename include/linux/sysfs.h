@@ -27,8 +27,11 @@ struct module;
 struct bin_attribute;
 enum kobj_ns_type;
 
+/* 属性定义 */
 struct attribute {
+	/* 名字 */
 	const char		*name;
+	/* 模式 */
 	umode_t			mode;
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 	bool			ignore_lockdep:1;
@@ -81,13 +84,19 @@ do {							\
  * @bin_attrs:	Pointer to NULL terminated list of binary attributes.
  *		Either attrs or bin_attrs or both must be provided.
  */
+/* 用于声明属性组的数据结构 */
 struct attribute_group {
+	/* 属性组名字，可选 */
 	const char		*name;
+	/* 用于返回与该属性组相关的权限，可选 */
 	umode_t			(*is_visible)(struct kobject *,
 					      struct attribute *, int);
+	/* 用于返回与该属性组相关的binary属性权限，可选 */
 	umode_t			(*is_bin_visible)(struct kobject *,
 						  struct bin_attribute *, int);
+	/* 属性链表，以null结尾 */
 	struct attribute	**attrs;
+	/* binary属性链表，以null结尾 */
 	struct bin_attribute	**bin_attrs;
 };
 

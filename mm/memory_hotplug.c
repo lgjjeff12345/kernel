@@ -188,6 +188,7 @@ static int check_pfn_span(unsigned long pfn, unsigned long nr_pages,
  */
 struct page *pfn_to_online_page(unsigned long pfn)
 {
+	/* 获取其section号 */
 	unsigned long nr = pfn_to_section_nr(pfn);
 	struct dev_pagemap *pgmap;
 	struct mem_section *ms;
@@ -195,7 +196,9 @@ struct page *pfn_to_online_page(unsigned long pfn)
 	if (nr >= NR_MEM_SECTIONS)
 		return NULL;
 
+	/* 获取其mem_section指针 */
 	ms = __nr_to_section(nr);
+	/* section是否online */
 	if (!online_section(ms))
 		return NULL;
 
@@ -203,12 +206,14 @@ struct page *pfn_to_online_page(unsigned long pfn)
 	 * Save some code text when online_section() +
 	 * pfn_section_valid() are sufficient.
 	 */
+	/* pfn是否有效 */
 	if (IS_ENABLED(CONFIG_HAVE_ARCH_PFN_VALID) && !pfn_valid(pfn))
 		return NULL;
 
 	if (!pfn_section_valid(ms, pfn))
 		return NULL;
 
+	/* 若该section对应的memory block处于online状态，则获取该pfn对应的page */
 	if (!online_device_section(ms))
 		return pfn_to_page(pfn);
 
@@ -953,14 +958,17 @@ static void rollback_node_hotadd(int nid)
  * 0 -> the node is already online
  * -ENOMEM -> the node could not be allocated
  */
+/* 将一个给定的numa节点设置为online状态 */
 static int __try_online_node(int nid, bool set_node_online)
 {
 	pg_data_t *pgdat;
 	int ret = 1;
 
+	/* 该节点已经处于online状态 */
 	if (node_online(nid))
 		return 0;
 
+	/* hot并添加该节点对应的pgdat */
 	pgdat = hotadd_new_pgdat(nid);
 	if (!pgdat) {
 		pr_err("Cannot online node %d due to NULL pgdat\n", nid);
@@ -969,6 +977,7 @@ static int __try_online_node(int nid, bool set_node_online)
 	}
 
 	if (set_node_online) {
+		/* 将节点设置为online状态，并注册该节点 */
 		node_set_online(nid);
 		ret = register_one_node(nid);
 		BUG_ON(ret);
@@ -980,6 +989,7 @@ out:
 /*
  * Users of this function always want to online/register the node
  */
+/* 将给定numa节点设置为online状态 */
 int try_online_node(int nid)
 {
 	int ret;

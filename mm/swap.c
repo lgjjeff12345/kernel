@@ -44,6 +44,7 @@
 #include <trace/events/pagemap.h>
 
 /* How many pages do we try to swap or page in/out together? */
+/* 一次执行swap时需要换入换出的page数目 */
 int page_cluster;
 
 /* Protecting only lru_rotate.pvec which requires disabling interrupts */
@@ -1129,11 +1130,16 @@ EXPORT_SYMBOL(pagevec_lookup_range_tag);
 /*
  * Perform any setup for the swap system
  */
+/* swap设置函数，用于配置一次换入换出的page数目 */
 void __init swap_setup(void)
 {
 	unsigned long megs = totalram_pages() >> (20 - PAGE_SHIFT);
 
 	/* Use a smaller cluster for small-memory machines */
+	/* 一次执行swap时需要换入换出的page数目。
+       ram小于16M的系统，一次操作2个page，
+       ram大于等于16M的系统，一次操作3个page
+	*/
 	if (megs < 16)
 		page_cluster = 2;
 	else

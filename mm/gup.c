@@ -237,6 +237,8 @@ bool __must_check try_grab_page(struct page *page, unsigned int flags)
  * that such pages can be separately tracked and uniquely handled. In
  * particular, interactions with RDMA and filesystems need special handling.
  */
+/* 释放一个dma-pinned page
+*/
 void unpin_user_page(struct page *page)
 {
 	put_compound_head(compound_head(page), 1, FOLL_PIN);

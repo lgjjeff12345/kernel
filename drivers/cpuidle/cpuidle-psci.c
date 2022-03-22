@@ -48,11 +48,13 @@ static inline u32 psci_get_domain_state(void)
 	return __this_cpu_read(domain_state);
 }
 
+/* psci进入特定idle状态的函数 */
 static inline int psci_enter_state(int idx, u32 state)
 {
 	return CPU_PM_CPU_IDLE_ENTER_PARAM(psci_cpu_suspend_enter, idx, state);
 }
 
+/* psci进入idle状态的入口函数 */
 static int __psci_enter_domain_idle_state(struct cpuidle_device *dev,
 					  struct cpuidle_driver *drv, int idx,
 					  bool s2idle)
@@ -95,12 +97,14 @@ static int __psci_enter_domain_idle_state(struct cpuidle_device *dev,
 	return ret;
 }
 
+/* psci的进入idle状态回调函数 */
 static int psci_enter_domain_idle_state(struct cpuidle_device *dev,
 					struct cpuidle_driver *drv, int idx)
 {
 	return __psci_enter_domain_idle_state(dev, drv, idx, false);
 }
 
+/* psci的进入s2idle状态回调函数 */
 static int psci_enter_s2idle_domain_idle_state(struct cpuidle_device *dev,
 					       struct cpuidle_driver *drv,
 					       int idx)
@@ -146,11 +150,13 @@ static void psci_idle_init_cpuhp(void)
 		pr_warn("Failed %d while setup cpuhp state\n", err);
 }
 
+/* psci idle进入idle的函数 */
 static int psci_enter_idle_state(struct cpuidle_device *dev,
 				struct cpuidle_driver *drv, int idx)
 {
 	u32 *state = __this_cpu_read(psci_cpuidle_data.psci_states);
 
+	/* psci进入特定idle状态的函数 */
 	return psci_enter_state(idx, state[idx]);
 }
 
@@ -160,6 +166,7 @@ static const struct of_device_id psci_idle_state_match[] = {
 	{ },
 };
 
+/* 从idle属性中解析arm,psci-suspend-param属性 */
 int psci_dt_parse_state_node(struct device_node *np, u32 *state)
 {
 	int err = of_property_read_u32(np, "arm,psci-suspend-param", state);
@@ -211,16 +218,19 @@ static int psci_dt_cpu_init_idle(struct device *dev, struct cpuidle_driver *drv,
 	struct psci_cpuidle_data *data = per_cpu_ptr(&psci_cpuidle_data, cpu);
 
 	state_count++; /* Add WFI state too */
+	/* 分配psci idle状态数组内存 */
 	psci_states = devm_kcalloc(dev, state_count, sizeof(*psci_states),
 				   GFP_KERNEL);
 	if (!psci_states)
 		return -ENOMEM;
 
 	for (i = 1; i < state_count; i++) {
+		/* 解析设备树中cpu给定index的idle状态属性节点 */
 		state_node = of_get_cpu_state_node(cpu_node, i - 1);
 		if (!state_node)
 			break;
 
+		/* 从idle属性中解析arm,psci-suspend-param属性 */
 		ret = psci_dt_parse_state_node(state_node, &psci_states[i]);
 		of_node_put(state_node);
 
@@ -239,10 +249,12 @@ static int psci_dt_cpu_init_idle(struct device *dev, struct cpuidle_driver *drv,
 		return ret;
 
 	/* Idle states parsed correctly, store them in the per-cpu struct. */
+	/* idle状态成功解析，则将其保存在percpu的结构中，它的值表示idle函数entry */
 	data->psci_states = psci_states;
 	return 0;
 }
 
+/* psci的cpu idle状态初始化 */
 static int psci_cpu_init_idle(struct device *dev, struct cpuidle_driver *drv,
 			      unsigned int cpu, unsigned int state_count)
 {
@@ -253,6 +265,7 @@ static int psci_cpu_init_idle(struct device *dev, struct cpuidle_driver *drv,
 	 * If the PSCI cpu_suspend function hook has not been initialized
 	 * idle states must not be enabled, so bail out
 	 */
+	/* idle states必须要支持psci的cpu_suspend */
 	if (!psci_ops.cpu_suspend)
 		return -EOPNOTSUPP;
 
@@ -260,6 +273,7 @@ static int psci_cpu_init_idle(struct device *dev, struct cpuidle_driver *drv,
 	if (!cpu_node)
 		return -ENODEV;
 
+	/* 初始化psci的dt idle接口 */
 	ret = psci_dt_cpu_init_idle(dev, drv, cpu_node, state_count, cpu);
 
 	of_node_put(cpu_node);
@@ -275,6 +289,7 @@ static void psci_cpu_deinit_idle(int cpu)
 	psci_cpuidle_use_cpuhp = false;
 }
 
+/* psci idle初始化 */
 static int psci_idle_init_cpu(struct device *dev, int cpu)
 {
 	struct cpuidle_driver *drv;
@@ -282,6 +297,7 @@ static int psci_idle_init_cpu(struct device *dev, int cpu)
 	const char *enable_method;
 	int ret = 0;
 
+	/* 获取cpu设备节点 */
 	cpu_node = of_cpu_device_node_get(cpu);
 	if (!cpu_node)
 		return -ENODEV;
@@ -290,6 +306,7 @@ static int psci_idle_init_cpu(struct device *dev, int cpu)
 	 * Check whether the enable-method for the cpu is PSCI, fail
 	 * if it is not.
 	 */
+	/* 获取其enable-method，若其不是psci方式，则退出 */
 	enable_method = of_get_property(cpu_node, "enable-method", NULL);
 	if (!enable_method || (strcmp(enable_method, "psci")))
 		ret = -ENODEV;
@@ -298,10 +315,12 @@ static int psci_idle_init_cpu(struct device *dev, int cpu)
 	if (ret)
 		return ret;
 
+	/* 分配驱动结构体内存 */
 	drv = devm_kzalloc(dev, sizeof(*drv), GFP_KERNEL);
 	if (!drv)
 		return -ENOMEM;
 
+	/* 初始化成员变量 */
 	drv->name = "psci_idle";
 	drv->owner = THIS_MODULE;
 	drv->cpumask = (struct cpumask *)cpumask_of(cpu);
@@ -310,10 +329,16 @@ static int psci_idle_init_cpu(struct device *dev, int cpu)
 	 * PSCI idle states relies on architectural WFI to be represented as
 	 * state index 0.
 	 */
+	/* psci idel状态依赖于架构相关的WFI，作为state 0的状态
+      （1）进入idle的函数
+      （2）退出延迟1ms
+      （3）功耗需求设置为最大
+	*/
 	drv->states[0].enter = psci_enter_idle_state;
 	drv->states[0].exit_latency = 1;
 	drv->states[0].target_residency = 1;
 	drv->states[0].power_usage = UINT_MAX;
+	/* 名字为WFI */
 	strcpy(drv->states[0].name, "WFI");
 	strcpy(drv->states[0].desc, "ARM WFI");
 
@@ -324,6 +349,9 @@ static int psci_idle_init_cpu(struct device *dev, int cpu)
 	 * default archictectural back-end already executes wfi
 	 * on idle entry.
 	 */
+	/* 解析dt中的idle状态，并初始化驱动的idle状态数组，
+       start_idx：第一个将要被初始化的状态index
+    */
 	ret = dt_init_idle_driver(drv, psci_idle_state_match, 1);
 	if (ret <= 0)
 		return ret ? : -ENODEV;
@@ -331,16 +359,19 @@ static int psci_idle_init_cpu(struct device *dev, int cpu)
 	/*
 	 * Initialize PSCI idle states.
 	 */
+	/* psci的cpu idle状态初始化 */
 	ret = psci_cpu_init_idle(dev, drv, cpu, ret);
 	if (ret) {
 		pr_err("CPU %d failed to PSCI idle\n", cpu);
 		return ret;
 	}
 
+	/* cpuidle驱动注册 */
 	ret = cpuidle_register(drv, NULL);
 	if (ret)
 		goto deinit;
 
+	/* cpuidle cooling注册 */
 	cpuidle_cooling_register(drv);
 
 	return 0;
@@ -356,12 +387,16 @@ deinit:
  * to register cpuidle driver then rollback to cancel all CPUs
  * registration.
  */
+/* 初始化psci cpuidle驱动
+   为每个cpu初始化psci cpuidle驱动
+*/
 static int psci_cpuidle_probe(struct platform_device *pdev)
 {
 	int cpu, ret;
 	struct cpuidle_driver *drv;
 	struct cpuidle_device *dev;
 
+	/* 为每个possible驱动初始化psci idle */
 	for_each_possible_cpu(cpu) {
 		ret = psci_idle_init_cpu(&pdev->dev, cpu);
 		if (ret)

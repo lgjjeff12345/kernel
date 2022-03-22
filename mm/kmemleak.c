@@ -1549,6 +1549,9 @@ static void kmemleak_scan(void)
  * Thread function performing automatic memory scanning. Unreferenced objects
  * at the end of a memory scan are reported but only the first time.
  */
+/* 该函数执行自动内存扫描，在内存扫描最后未引用对象将会被报告，但它只会在
+   第一次报告
+*/
 static int kmemleak_scan_thread(void *arg)
 {
 	static int first_run = IS_ENABLED(CONFIG_DEBUG_KMEMLEAK_AUTO_SCAN);
@@ -1587,6 +1590,7 @@ static int kmemleak_scan_thread(void *arg)
  * Start the automatic memory scanning thread. This function must be called
  * with the scan_mutex held.
  */
+/* 启动自动内存扫描线程 */
 static void start_scan_thread(void)
 {
 	if (scan_thread)

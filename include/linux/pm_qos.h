@@ -38,6 +38,7 @@ enum pm_qos_flags_status {
 
 #define PM_QOS_FLAG_NO_POWER_OFF	(1 << 0)
 
+/* qos类型 */
 enum pm_qos_type {
 	PM_QOS_UNITIALIZED,
 	PM_QOS_MAX,		/* return the largest value */
@@ -49,12 +50,18 @@ enum pm_qos_type {
  * or effective_flags atomically.  Atomic access is only guaranteed on all CPU
  * types linux supports for 32 bit quantites
  */
+/* 电源管理的qos限制 */
 struct pm_qos_constraints {
 	struct plist_head list;
+	/* target值 */
 	s32 target_value;	/* Do not change to 64 bit */
+	/* 默认值 */
 	s32 default_value;
+	/* 不限制的值 */
 	s32 no_constraint_value;
+	/* qos类型 */
 	enum pm_qos_type type;
+	/* 通知链表头 */
 	struct blocking_notifier_head *notifiers;
 };
 
@@ -82,10 +89,15 @@ enum freq_qos_req_type {
 	FREQ_QOS_MAX,
 };
 
+/* 频率限制 */
 struct freq_constraints {
+	/* 最小频率 */
 	struct pm_qos_constraints min_freq;
+	/* 最小频率通知 */
 	struct blocking_notifier_head min_freq_notifiers;
+	/* 最大频率 */
 	struct pm_qos_constraints max_freq;
+	/* 最大频率通知 */
 	struct blocking_notifier_head max_freq_notifiers;
 };
 
@@ -95,7 +107,7 @@ struct freq_qos_request {
 	struct freq_constraints *qos;
 };
 
-
+/* pm的qos请求类型 */
 enum dev_pm_qos_req_type {
 	DEV_PM_QOS_RESUME_LATENCY = 1,
 	DEV_PM_QOS_LATENCY_TOLERANCE,
@@ -104,6 +116,7 @@ enum dev_pm_qos_req_type {
 	DEV_PM_QOS_FLAGS,
 };
 
+/* 电源管理qos请求 */
 struct dev_pm_qos_request {
 	enum dev_pm_qos_req_type type;
 	union {
@@ -114,7 +127,16 @@ struct dev_pm_qos_request {
 	struct device *dev;
 };
 
+/* 电源管理的qos */
 struct dev_pm_qos {
+	/* resume延迟
+	   latency tolerance
+	   频率限制
+	   标志
+	   resume延迟请求
+	   latency tolerance请求
+	   flags_req请求
+	*/
 	struct pm_qos_constraints resume_latency;
 	struct pm_qos_constraints latency_tolerance;
 	struct freq_constraints freq;
@@ -125,6 +147,7 @@ struct dev_pm_qos {
 };
 
 /* Action requested to pm_qos_update_target */
+/* qos请求action */
 enum pm_qos_req_action {
 	PM_QOS_ADD_REQ,		/* Add a new request */
 	PM_QOS_UPDATE_REQ,	/* Update an existing request */
@@ -204,6 +227,9 @@ static inline s32 dev_pm_qos_requested_flags(struct device *dev)
 
 static inline s32 dev_pm_qos_raw_resume_latency(struct device *dev)
 {
+	/* 若qos指针为空，则返回S32_MAX。
+       否则，返回power.qos->resume_latency->target_value的值
+	*/
 	return IS_ERR_OR_NULL(dev->power.qos) ?
 		PM_QOS_RESUME_LATENCY_NO_CONSTRAINT :
 		pm_qos_read_value(&dev->power.qos->resume_latency);

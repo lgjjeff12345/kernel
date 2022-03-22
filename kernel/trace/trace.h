@@ -26,7 +26,27 @@
 #include <asm/unistd.h>		/* For NR_SYSCALLS	     */
 #include <asm/syscall.h>	/* some archs define it here */
 #endif
-
+/* trace类型
+   TRACE_FN：函数trace
+   TRACE_CTX：上下文trace
+   TRACE_WAKE：唤醒trace
+   TRACE_STACK：栈trace
+   TRACE_PRINT：打印trace
+   TRACE_BPRINT：bprint trace
+   TRACE_MMIO_RW：mmio rw trace
+   TRACE_MMIO_MAP：mmio映射trace
+   TRACE_BRANCH：分支trace
+   TRACE_GRAPH_RET：graph返回trace
+   TRACE_GRAPH_ENT：graph环境trace
+   TRACE_USER_STACK：用户栈trace
+   TRACE_BLK：block trace
+   TRACE_BPUTS：bputs trace
+   TRACE_HWLAT：硬件延迟trace
+   TRACE_OSNOISE：osnoise trace
+   TRACE_TIMERLAT：定时器延迟trace
+   TRACE_RAW_DATA：raw数据trace
+   TRACE_FUNC_REPEATS：函数repeats trace
+*/
 enum trace_type {
 	__TRACE_FIRST_TYPE = 0,
 
@@ -109,29 +129,34 @@ enum trace_type {
  * syscalls are special, and need special handling, this is why
  * they are not included in trace_entries.h
  */
+/* 进入系统调用trace */
 struct syscall_trace_enter {
 	struct trace_entry	ent;
 	int			nr;
 	unsigned long		args[];
 };
 
+/* 退出系统调用trace */
 struct syscall_trace_exit {
 	struct trace_entry	ent;
 	int			nr;
 	long			ret;
 };
 
+/* kprobe trace入口头 */
 struct kprobe_trace_entry_head {
 	struct trace_entry	ent;
 	unsigned long		ip;
 };
 
+/* kretprobe trace入口头 */
 struct kretprobe_trace_entry_head {
 	struct trace_entry	ent;
 	unsigned long		func;
 	unsigned long		ret_ip;
 };
 
+/* trace buffer的长度 */
 #define TRACE_BUF_SIZE		1024
 
 struct trace_array;
@@ -141,6 +166,10 @@ struct trace_array;
  * plus some other descriptor data: (for example which task started
  * the trace, etc.)
  */
+/* cpu的trace数组
+   它包含数千trace entries，以及一些其它的描述数据（如哪个线程
+   启动该trace等）
+*/
 struct trace_array_cpu {
 	atomic_t		disabled;
 	void			*buffer_page;	/* ring buffer spare */
@@ -168,10 +197,18 @@ struct trace_array_cpu {
 struct tracer;
 struct trace_option_dentry;
 
+/* array缓冲区
+   trace_array：持有该buffer的trace array
+   trace_buffer：指向buffer维护结构体
+   trace_array_cpu：cpu的trace数组
+   time_start：起始时间
+   cpu：cpu号
+*/
 struct array_buffer {
 	struct trace_array		*tr;
 	struct trace_buffer		*buffer;
 	struct trace_array_cpu __percpu	*data;
+	/* buffer的时间戳 */
 	u64				time_start;
 	int				cpu;
 };
@@ -273,9 +310,13 @@ struct trace_func_repeats {
  * highest level data structure that individual tracers deal with.
  * They have on/off state as well:
  */
+/* trace array：一个percpu的trace数组，这是每个tracers处理的最高级
+   数据结构。它们也含有启动/关闭状态
+*/
 struct trace_array {
 	struct list_head	list;
 	char			*name;
+	/* array缓冲区 */
 	struct array_buffer	array_buffer;
 #ifdef CONFIG_TRACER_MAX_TRACE
 	/*
@@ -509,6 +550,25 @@ struct trace_option_dentry {
  * @set_flag: signals one of your private flags changed (trace_options file)
  * @flags: your private flags
  */
+/* 与tracefs交互的特定tracer以及其回调
+   name：在available_tracers文件中选择的名称
+   init：当切换到该tracer时被调用（echo name > current_tracer）
+   reset：当切换到另外一个tracer时被调用
+   start：当tracing没有暂停时被调用（echo 1 > tracing_on）
+   stop：当tracing被停止时调用（echo 0 > tracing_on）
+   update_thresh：当tracing_thresh被更新时调用
+   open：trace文件被打开时调用
+   pipe_open：当trace_pipe文件被打开时调用
+   close：当trace文件被释放时调用
+   pipe_close：当trace_pipe文件被释放时调用
+   read：在trace_pipe时重写默认的读回调
+   splice_read：在trace_pipe时重写默认的splice_read回调
+   selftest：在启动时调用的自测
+   print_headers：描述columns时重写第一行
+   print_line：打印一个trace的回调
+   set_flag：私有flag改变的信号
+   flags：私有flag
+*/
 struct tracer {
 	const char		*name;
 	int			(*init)(struct trace_array *tr);
@@ -541,6 +601,7 @@ struct tracer {
 	/* Return 0 if OK with change, else return non-zero */
 	int			(*flag_changed)(struct trace_array *tr,
 						u32 mask, int set);
+	/* 指向下一个tracer */
 	struct tracer		*next;
 	struct tracer_flags	*flags;
 	int			enabled;
@@ -550,6 +611,7 @@ struct tracer {
 	bool			use_max_tr;
 #endif
 	/* True if tracer cannot be enabled in kernel param */
+	/* 若tracer不能在内核参数中被使能，则为true */
 	bool			noboot;
 };
 

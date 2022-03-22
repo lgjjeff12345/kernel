@@ -200,8 +200,10 @@ static inline struct cpuset *task_cs(struct task_struct *task)
 	return css_cs(task_css(task, cpuset_cgrp_id));
 }
 
+/* 获取该cpuset的父cpuset */
 static inline struct cpuset *parent_cs(struct cpuset *cs)
 {
+	/* 先获取该cpuset的cgroup set的parent，然后其对应的cpuset */
 	return css_cs(cs->css.parent);
 }
 
@@ -218,46 +220,55 @@ typedef enum {
 } cpuset_flagbits_t;
 
 /* convenient tests for these bits */
+/* 若设置了CS_ONLINE标志且去对应的css不处于dying状态 */
 static inline bool is_cpuset_online(struct cpuset *cs)
 {
 	return test_bit(CS_ONLINE, &cs->flags) && !css_is_dying(&cs->css);
 }
 
+/* 该cpuset是否设置了CS_CPU_EXCLUSIVE标志 */
 static inline int is_cpu_exclusive(const struct cpuset *cs)
 {
 	return test_bit(CS_CPU_EXCLUSIVE, &cs->flags);
 }
 
+/* 该cpuset是否设置了CS_MEM_EXCLUSIVE标志 */
 static inline int is_mem_exclusive(const struct cpuset *cs)
 {
 	return test_bit(CS_MEM_EXCLUSIVE, &cs->flags);
 }
 
+/* 该cpuset是否设置了CS_MEM_HARDWALL标志 */
 static inline int is_mem_hardwall(const struct cpuset *cs)
 {
 	return test_bit(CS_MEM_HARDWALL, &cs->flags);
 }
 
+/* 该cpuset是否设置了CS_SCHED_LOAD_BALANCE标志 */
 static inline int is_sched_load_balance(const struct cpuset *cs)
 {
 	return test_bit(CS_SCHED_LOAD_BALANCE, &cs->flags);
 }
 
+/* 该cpuset是否设置了CS_MEMORY_MIGRATE标志 */
 static inline int is_memory_migrate(const struct cpuset *cs)
 {
 	return test_bit(CS_MEMORY_MIGRATE, &cs->flags);
 }
 
+/* 该cpuset是否设置了CS_SPREAD_PAGE标志 */
 static inline int is_spread_page(const struct cpuset *cs)
 {
 	return test_bit(CS_SPREAD_PAGE, &cs->flags);
 }
 
+/* 该cpuset是否设置了CS_SPREAD_SLAB标志 */
 static inline int is_spread_slab(const struct cpuset *cs)
 {
 	return test_bit(CS_SPREAD_SLAB, &cs->flags);
 }
 
+/* 该cpuset的partition_root_state是否大于0 */
 static inline int is_partition_root(const struct cpuset *cs)
 {
 	return cs->partition_root_state > 0;
@@ -3392,6 +3403,9 @@ int cpuset_nodemask_valid_mems_allowed(nodemask_t *nodemask)
  * callback_lock.  If no ancestor is mem_exclusive or mem_hardwall
  * (an unusual configuration), then returns the root cpuset.
  */
+/* 获取其符合条件的父cpuset
+   
+*/
 static struct cpuset *nearest_hardwall_ancestor(struct cpuset *cs)
 {
 	while (!(is_mem_exclusive(cs) || is_mem_hardwall(cs)) && parent_cs(cs))
@@ -3439,25 +3453,31 @@ static struct cpuset *nearest_hardwall_ancestor(struct cpuset *cs)
  *	GFP_KERNEL   - any node in enclosing hardwalled cpuset ok
  *	GFP_USER     - only nodes in current tasks mems allowed ok.
  */
+/* 是否可以在指定内存节点分配内存 */
 bool __cpuset_node_allowed(int node, gfp_t gfp_mask)
 {
 	struct cpuset *cs;		/* current cpuset ancestors */
 	int allowed;			/* is allocation in zone z allowed? */
 	unsigned long flags;
 
+	/* 当前处于中断中，返回true */
 	if (in_interrupt())
 		return true;
+	/* 当前线程的mems_allowed掩码中已设置该node，返回true */
 	if (node_isset(node, current->mems_allowed))
 		return true;
 	/*
 	 * Allow tasks that have access to memory reserves because they have
 	 * been OOM killed to get memory anywhere.
 	 */
+	/* oom victim可以分配任意内存 */
 	if (unlikely(tsk_is_oom_victim(current)))
 		return true;
+	/* haredwall分配，不允许 */
 	if (gfp_mask & __GFP_HARDWALL)	/* If hardwall request, stop here */
 		return false;
 
+	/* 正在退出的线程，允许分配 */
 	if (current->flags & PF_EXITING) /* Let dying task have memory */
 		return true;
 

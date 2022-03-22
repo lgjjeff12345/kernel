@@ -23,16 +23,23 @@
 
 #define MIN_MEMORY_BLOCK_SIZE     (1UL << SECTION_SIZE_BITS)
 
+/* memory block结构体 */
 struct memory_block {
+	/* 该内存block的起始section */
 	unsigned long start_section_nr;
+	/* 该内存block的状态 */
 	unsigned long state;		/* serialized by the dev->lock */
+	/* online的；类型 */
 	int online_type;		/* for passing data to online routine */
+	/* 该memblock对应的node id */
 	int nid;			/* NID for this memory block */
+	/* 该block对应的设备结构体 */
 	struct device dev;
 	/*
 	 * Number of vmemmap pages. These pages
 	 * lay at the beginning of the memory block.
 	 */
+	/* vmemmap页的数量，这些页位于memory blcok的开头 */
 	unsigned long nr_vmemmap_pages;
 };
 
@@ -41,6 +48,7 @@ unsigned long memory_block_size_bytes(void);
 int set_memory_block_size_order(unsigned int order);
 
 /* These states are exposed to userspace as text strings in sysfs */
+/* 状态 */
 #define	MEM_ONLINE		(1<<0) /* exposed to userspace */
 #define	MEM_GOING_OFFLINE	(1<<1) /* exposed to userspace */
 #define	MEM_OFFLINE		(1<<2) /* exposed to userspace */
@@ -48,8 +56,11 @@ int set_memory_block_size_order(unsigned int order);
 #define	MEM_CANCEL_ONLINE	(1<<4)
 #define	MEM_CANCEL_OFFLINE	(1<<5)
 
+/* memory通知 */
 struct memory_notify {
+	/* 起始pfn */
 	unsigned long start_pfn;
+	/* page数量 */
 	unsigned long nr_pages;
 	int status_change_nid_normal;
 	int status_change_nid_high;

@@ -23,9 +23,13 @@ struct device;
 struct device_node;
 struct attribute_group;
 
+/* cpu结构体 */
 struct cpu {
+	/* 包含该cpu的node */
 	int node_id;		/* The node which contains the CPU */
+	/* 该cpu是否是可热插拔的 */
 	int hotpluggable;	/* creates sysfs control file if hotpluggable */
+	/* 该cpu对应的设备结构体 */
 	struct device dev;
 };
 

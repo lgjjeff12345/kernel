@@ -47,9 +47,11 @@ static inline bool irq_needs_fixup(struct irq_data *d)
 		return true;
 	}
 #endif
+	/* 该中断的affinity mask中含有当前cpu返回1，否则返回0 */
 	return cpumask_test_cpu(cpu, m);
 }
 
+/* 迁移一个中断 */
 static bool migrate_one_irq(struct irq_desc *desc)
 {
 	struct irq_data *d = irq_desc_get_irq_data(desc);
@@ -64,6 +66,7 @@ static bool migrate_one_irq(struct irq_desc *desc)
 	 * still in the radix tree. Also if the chip has no affinity setter,
 	 * nothing can be done here.
 	 */
+	/* 确认中断控制器是否支持affinity设置接口 */
 	if (!chip || !chip->irq_set_affinity) {
 		pr_debug("IRQ %u: Unable to migrate away\n", d->irq);
 		return false;
@@ -78,6 +81,12 @@ static bool migrate_one_irq(struct irq_desc *desc)
 	 * Note: Do not check desc->action as this might be a chained
 	 * interrupt.
 	 */
+	/* 下面的情况，不需要设置affinity
+	  （1）中断是percpu的
+	  （2）中断没有启动
+	  （3）affinity掩码中不含有本cpu
+	  注意：不要检查desc->action，因为它可能是一个级联中断
+	*/
 	if (irqd_is_per_cpu(d) || !irqd_is_started(d) || !irq_needs_fixup(d)) {
 		/*
 		 * If an irq move is pending, abort it if the dying CPU is
@@ -101,6 +110,7 @@ static bool migrate_one_irq(struct irq_desc *desc)
 	 * there is no move pending or the pending mask does not contain
 	 * any online CPU, use the current affinity mask.
 	 */
+	/* 获取其affinity位表 */
 	if (irq_fixup_move_pending(desc, true))
 		affinity = irq_desc_get_pending_mask(desc);
 	else
@@ -110,6 +120,7 @@ static bool migrate_one_irq(struct irq_desc *desc)
 	if (maskchip && chip->irq_mask)
 		chip->irq_mask(d);
 
+	/* 强制迁移到所有online cpu上 */
 	if (cpumask_any_and(affinity, cpu_online_mask) >= nr_cpu_ids) {
 		/*
 		 * If the interrupt is managed, then shut it down and leave
@@ -152,16 +163,24 @@ static bool migrate_one_irq(struct irq_desc *desc)
  * Note: we must iterate over all IRQs, whether they have an attached
  * action structure or not, as we need to get chained interrupts too.
  */
+/* 迁移本cpu上的所有中断，
+   当前cpu已经被标记为offline，将其上的irq从当前cpu上迁移出去。
+   若affinity设置中不允许其它cpu，则强制将其迁移到任意available的cpu，
+   注意：我们需要遍历所有的irq，不管其是否含有attached action结构
+*/
 void irq_migrate_all_off_this_cpu(void)
 {
 	struct irq_desc *desc;
 	unsigned int irq;
 
+	/* 遍历所有active中断 */
 	for_each_active_irq(irq) {
 		bool affinity_broken;
 
 		desc = irq_to_desc(irq);
 		raw_spin_lock(&desc->lock);
+		/* 迁移该中断，若返回值为非0，表明该中断原先的affinity
+		   设置为当前cpu，被强制迁移到其它cpu上了 */
 		affinity_broken = migrate_one_irq(desc);
 		raw_spin_unlock(&desc->lock);
 

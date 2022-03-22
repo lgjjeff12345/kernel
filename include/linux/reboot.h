@@ -13,6 +13,13 @@ struct device;
 #define SYS_HALT	0x0002	/* Notify of system halt */
 #define SYS_POWER_OFF	0x0003	/* Notify of system power off */
 
+/* reboot模式：
+   冷启动
+   热启动
+   硬启动
+   软启动
+   gpio启动
+*/
 enum reboot_mode {
 	REBOOT_UNDEFINED = -1,
 	REBOOT_COLD = 0,
@@ -24,6 +31,15 @@ enum reboot_mode {
 extern enum reboot_mode reboot_mode;
 extern enum reboot_mode panic_reboot_mode;
 
+/* 启动类型：
+   triple
+   kbd
+   bios
+   acpi
+   efi
+   cf9_force
+   cf9_safe
+*/
 enum reboot_type {
 	BOOT_TRIPLE	= 't',
 	BOOT_KBD	= 'k',

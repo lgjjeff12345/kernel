@@ -17,8 +17,10 @@
 struct kobject *firmware_kobj;
 EXPORT_SYMBOL_GPL(firmware_kobj);
 
+/* sysfs的firmware目录初始化 */
 int __init firmware_init(void)
 {
+	/* 在sysfs的顶级目录下，创建一个firmware目录 */
 	firmware_kobj = kobject_create_and_add("firmware", NULL);
 	if (!firmware_kobj)
 		return -ENOMEM;

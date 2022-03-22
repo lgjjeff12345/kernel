@@ -439,6 +439,7 @@ int kernel_active_single_step(void)
 NOKPROBE_SYMBOL(kernel_active_single_step);
 
 /* ptrace API */
+/* 用户使能单步调试 */
 void user_enable_single_step(struct task_struct *task)
 {
 	struct thread_info *ti = task_thread_info(task);

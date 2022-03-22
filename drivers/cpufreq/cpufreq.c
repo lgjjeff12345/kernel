@@ -1847,6 +1847,10 @@ EXPORT_SYMBOL(cpufreq_generic_suspend);
  * Because some of the devices (like: i2c, regulators, etc) they use for
  * changing frequency are suspended quickly after this point.
  */
+/* suspend cpufreq governor
+   因为有些平台在suspend的该流程之后不能修改频率，因此其会在系统级的suspend/hibernate
+   周期中调用。因此有些用于变频的设备（如i2c，regulators等）在这个节点之后会快速suspend
+*/
 void cpufreq_suspend(void)
 {
 	struct cpufreq_policy *policy;
@@ -1859,13 +1863,16 @@ void cpufreq_suspend(void)
 
 	pr_debug("%s: Suspending Governors\n", __func__);
 
+	/* 遍历所有的active policy */
 	for_each_active_policy(policy) {
 		if (has_target()) {
 			down_write(&policy->rwsem);
+			/* 停止该governor */
 			cpufreq_stop_governor(policy);
 			up_write(&policy->rwsem);
 		}
 
+		/* suspend该policy的 */
 		if (cpufreq_driver->suspend && cpufreq_driver->suspend(policy))
 			pr_err("%s: Failed to suspend driver: %s\n", __func__,
 				cpufreq_driver->name);
@@ -1881,6 +1888,7 @@ suspend:
  * Called during system wide Suspend/Hibernate cycle for resuming governors that
  * are suspended with cpufreq_suspend().
  */
+/* resume cpufreq governor */
 void cpufreq_resume(void)
 {
 	struct cpufreq_policy *policy;
@@ -1899,12 +1907,15 @@ void cpufreq_resume(void)
 
 	pr_debug("%s: Resuming Governors\n", __func__);
 
+	/* 遍历所有的policy */
 	for_each_active_policy(policy) {
+		/* resume该policy */
 		if (cpufreq_driver->resume && cpufreq_driver->resume(policy)) {
 			pr_err("%s: Failed to resume driver: %p\n", __func__,
 				policy);
 		} else if (has_target()) {
 			down_write(&policy->rwsem);
+			/* 启动该cpufreq governor */
 			ret = cpufreq_start_governor(policy);
 			up_write(&policy->rwsem);
 
@@ -2341,6 +2352,7 @@ static void cpufreq_exit_governor(struct cpufreq_policy *policy)
 	module_put(policy->governor->owner);
 }
 
+/* 启动cpufreq governor */
 int cpufreq_start_governor(struct cpufreq_policy *policy)
 {
 	int ret;
@@ -2368,6 +2380,7 @@ int cpufreq_start_governor(struct cpufreq_policy *policy)
 	return 0;
 }
 
+/* 停止cpufreq的governor */
 void cpufreq_stop_governor(struct cpufreq_policy *policy)
 {
 	if (cpufreq_suspended || !policy->governor)
@@ -2375,6 +2388,7 @@ void cpufreq_stop_governor(struct cpufreq_policy *policy)
 
 	pr_debug("%s: for CPU %u\n", __func__, policy->cpu);
 
+	/* 调用对应governor的stop回调 */
 	if (policy->governor->stop)
 		policy->governor->stop(policy);
 }

@@ -432,6 +432,7 @@ EXPORT_SYMBOL_GPL(sched_clock_idle_sleep_event);
 /*
  * We just idled; resync with ktime.
  */
+/* idle返回，重新同步ktime */
 void sched_clock_idle_wakeup_event(void)
 {
 	unsigned long flags;

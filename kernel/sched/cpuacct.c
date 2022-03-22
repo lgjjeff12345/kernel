@@ -336,6 +336,7 @@ static struct cftype files[] = {
  *
  * called with rq->lock held.
  */
+/* 更新该任务cpuacct的sys/user执行时间 */
 void cpuacct_charge(struct task_struct *tsk, u64 cputime)
 {
 	struct cpuacct *ca;

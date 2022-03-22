@@ -73,6 +73,7 @@ static inline void cfs_se_util_change(struct sched_avg *avg)
  */
 static inline void update_rq_clock_pelt(struct rq *rq, s64 delta)
 {
+	/* 若当前为idle进程，则之间rq->clock作为pelt时间 */
 	if (unlikely(is_idle_task(rq->curr))) {
 		/* The rq is idle, we can sync to clock_task */
 		rq->clock_pelt  = rq_clock_task(rq);
@@ -95,6 +96,9 @@ static inline void update_rq_clock_pelt(struct rq *rq, s64 delta)
 	 * Scale the elapsed time to reflect the real amount of
 	 * computation
 	 */
+	/* 运行时间与cpu capacity和freq归一化后的时间，作为pelt时间
+	   clock_pelt = delta * cur_cap / total_cap * cur_freq / total_freq
+	*/
 	delta = cap_scale(delta, arch_scale_cpu_capacity(cpu_of(rq)));
 	delta = cap_scale(delta, arch_scale_freq_capacity(cpu_of(rq)));
 
@@ -130,6 +134,7 @@ static inline void update_idle_rq_clock_pelt(struct rq *rq)
 		rq->lost_idle_time += rq_clock_task(rq) - rq->clock_pelt;
 }
 
+/* 将pelt时间 - idle时间 */
 static inline u64 rq_clock_pelt(struct rq *rq)
 {
 	lockdep_assert_rq_held(rq);

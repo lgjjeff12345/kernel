@@ -17,6 +17,7 @@
 
 #include "of_private.h"
 
+/* 通过kobj获取设备节点 */
 static struct device_node *kobj_to_device_node(struct kobject *kobj)
 {
 	return container_of(kobj, struct device_node, kobj);
@@ -51,12 +52,14 @@ EXPORT_SYMBOL(of_node_put);
 
 static BLOCKING_NOTIFIER_HEAD(of_reconfig_chain);
 
+/* 向of_reconfig_chain注册通知 */
 int of_reconfig_notifier_register(struct notifier_block *nb)
 {
 	return blocking_notifier_chain_register(&of_reconfig_chain, nb);
 }
 EXPORT_SYMBOL_GPL(of_reconfig_notifier_register);
 
+/* 从of_reconfig_chain注销通知 */
 int of_reconfig_notifier_unregister(struct notifier_block *nb)
 {
 	return blocking_notifier_chain_unregister(&of_reconfig_chain, nb);
@@ -73,6 +76,7 @@ const char *action_names[] = {
 };
 #endif
 
+/* of reconfig通知 */
 int of_reconfig_notify(unsigned long action, struct of_reconfig_data *p)
 {
 	int rc;
@@ -94,6 +98,7 @@ int of_reconfig_notify(unsigned long action, struct of_reconfig_data *p)
 
 	}
 #endif
+	/* 调用通知链的通知 */
 	rc = blocking_notifier_call_chain(&of_reconfig_chain, action, p);
 	return notifier_to_errno(rc);
 }

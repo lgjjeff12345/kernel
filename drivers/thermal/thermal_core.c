@@ -881,6 +881,9 @@ static void bind_cdev(struct thermal_cooling_device *cdev)
  * Return: a pointer to the created struct thermal_cooling_device or an
  * ERR_PTR. Caller must check return value with IS_ERR*() helpers.
  */
+/* 注册一个新的thermal cooling设备
+   注册其device，cdev以及sysfs节点
+*/
 static struct thermal_cooling_device *
 __thermal_cooling_device_register(struct device_node *np,
 				  const char *type, void *devdata,

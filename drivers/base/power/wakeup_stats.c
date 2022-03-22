@@ -133,6 +133,7 @@ static void device_create_release(struct device *dev)
 	kfree(dev);
 }
 
+/* 创建唤醒源设备 */
 static struct device *wakeup_source_device_create(struct device *parent,
 						  struct wakeup_source *ws)
 {
@@ -145,6 +146,7 @@ static struct device *wakeup_source_device_create(struct device *parent,
 		goto error;
 	}
 
+	/* 初始化设备结构体 */
 	device_initialize(dev);
 	dev->devt = MKDEV(0, 0);
 	dev->class = wakeup_class;
@@ -174,10 +176,12 @@ error:
  * @parent: Device given wakeup source is associated with (or NULL if virtual).
  * @ws: Wakeup source to be added in sysfs.
  */
+/* 在sysfs中添加唤醒源 */
 int wakeup_source_sysfs_add(struct device *parent, struct wakeup_source *ws)
 {
 	struct device *dev;
 
+	/* 创建唤醒源设备 */
 	dev = wakeup_source_device_create(parent, ws);
 	if (IS_ERR(dev))
 		return PTR_ERR(dev);

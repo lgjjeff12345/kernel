@@ -18,6 +18,10 @@
 #include <linux/etherdevice.h>
 #include <linux/phy.h>
 
+/* 获取该device对应的fwnode
+   若该节点含有of_node，则返回of_node结构中的fwnode成员。
+   否则，直接返回dev->fwnode
+*/
 struct fwnode_handle *dev_fwnode(struct device *dev)
 {
 	return IS_ENABLED(CONFIG_OF) && dev->of_node ?

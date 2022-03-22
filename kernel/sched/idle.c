@@ -258,6 +258,7 @@ exit_idle:
  *
  * Called with polling cleared.
  */
+/* idle loop实现 */
 static void do_idle(void)
 {
 	int cpu = smp_processor_id();
@@ -284,6 +285,7 @@ static void do_idle(void)
 
 		local_irq_disable();
 
+		/* 将cpu关闭 */
 		if (cpu_is_offline(cpu)) {
 			tick_nohz_idle_stop_tick();
 			cpuhp_report_idle_dead();

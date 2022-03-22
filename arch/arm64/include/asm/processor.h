@@ -109,6 +109,7 @@ struct debug_info {
 #endif
 };
 
+/* cpu上下文，callee寄存器，fp，sp和lr */
 struct cpu_context {
 	unsigned long x19;
 	unsigned long x20;
@@ -125,7 +126,9 @@ struct cpu_context {
 	unsigned long pc;
 };
 
+/* thread结构体 */
 struct thread_struct {
+	/* cpu上下文，callee寄存器，fp，sp和lr */
 	struct cpu_context	cpu_context;	/* cpu context */
 
 	/*
@@ -233,6 +236,7 @@ static inline void compat_start_thread(struct pt_regs *regs, unsigned long pc,
 }
 #endif
 
+/* 该地址是否为ttbr0地址 */
 static inline bool is_ttbr0_addr(unsigned long addr)
 {
 	/* entry assembly clears tags for TTBR0 addrs */
@@ -259,6 +263,7 @@ void set_task_sctlr_el1(u64 sctlr);
 extern struct task_struct *cpu_switch_to(struct task_struct *prev,
 					 struct task_struct *next);
 
+/* pt寄存器位置：栈 + THREAD_SIZE */
 #define task_pt_regs(p) \
 	((struct pt_regs *)(THREAD_SIZE + task_stack_page(p)) - 1)
 

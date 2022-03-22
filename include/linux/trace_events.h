@@ -125,6 +125,9 @@ enum trace_iter_flags {
 typedef enum print_line_t (*trace_print_func)(struct trace_iterator *iter,
 				      int flags, struct trace_event *event);
 
+/* trace事件函数
+   包含trace、raw、hex和binary函数
+*/
 struct trace_event_functions {
 	trace_print_func	trace;
 	trace_print_func	raw;
@@ -132,6 +135,7 @@ struct trace_event_functions {
 	trace_print_func	binary;
 };
 
+/* trace事件 */
 struct trace_event {
 	struct hlist_node		node;
 	struct list_head		list;

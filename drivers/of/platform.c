@@ -162,6 +162,7 @@ EXPORT_SYMBOL(of_device_alloc);
  * Return: Pointer to created platform device, or NULL if a device was not
  * registered.  Unavailable devices will not get registered.
  */
+/* 分配、初始化和注册一个of_device设备 */
 static struct platform_device *of_platform_device_create_pdata(
 					struct device_node *np,
 					const char *bus_id,
@@ -666,6 +667,7 @@ void devm_of_platform_depopulate(struct device *dev)
 EXPORT_SYMBOL_GPL(devm_of_platform_depopulate);
 
 #ifdef CONFIG_OF_DYNAMIC
+/* of reconfig的平台设备通知 */
 static int of_platform_notify(struct notifier_block *nb,
 				unsigned long action, void *arg)
 {
@@ -723,6 +725,7 @@ static struct notifier_block platform_of_notifier = {
 	.notifier_call = of_platform_notify,
 };
 
+/* 向of reconfig通知链注册平台设备的通知 */
 void of_platform_register_reconfig_notifier(void)
 {
 	WARN_ON(of_reconfig_notifier_register(&platform_of_notifier));

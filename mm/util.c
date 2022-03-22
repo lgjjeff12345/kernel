@@ -558,6 +558,7 @@ EXPORT_SYMBOL(vm_mmap);
  *
  * Return: pointer to the allocated memory of %NULL in case of failure
  */
+/* 尝试分配连续的物理内存，若分配失败则fallback为vmalloc分配 */
 void *kvmalloc_node(size_t size, gfp_t flags, int node)
 {
 	gfp_t kmalloc_flags = flags;

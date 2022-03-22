@@ -74,12 +74,19 @@ struct pinctrl_dev {
  *	this device, if any
  * @users: reference count
  */
+/* per-device pinctrl状态 */
 struct pinctrl {
+	/*  全局链表 */
 	struct list_head node;
+	/* 使用该pinctrl句柄的设备 */
 	struct device *dev;
+	/* 该设备的states链表 */
 	struct list_head states;
+	/* 当前state */
 	struct pinctrl_state *state;
+	/* 从dt中动态解析出的该设备相关mapping表chunks */
 	struct list_head dt_maps;
+	/* 引用计数 */
 	struct kref users;
 };
 

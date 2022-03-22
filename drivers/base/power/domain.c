@@ -158,6 +158,7 @@ static int genpd_runtime_suspend(struct device *dev);
  * and checks that the PM domain pointer is a real generic PM domain.
  * Any failure results in NULL being returned.
  */
+/* 根据设备结构体获取其attach的genpd */
 static struct generic_pm_domain *dev_to_genpd_safe(struct device *dev)
 {
 	if (IS_ERR_OR_NULL(dev) || IS_ERR_OR_NULL(dev->pm_domain))
@@ -1407,11 +1408,13 @@ static void genpd_complete(struct device *dev)
 	genpd_unlock(genpd);
 }
 
+/* 切换该设备attach的genpd状态 */
 static void genpd_switch_state(struct device *dev, bool suspend)
 {
 	struct generic_pm_domain *genpd;
 	bool use_lock;
 
+	/* 根据设备结构体获取其attach的genpd */
 	genpd = dev_to_genpd_safe(dev);
 	if (!genpd)
 		return;
@@ -1442,6 +1445,9 @@ static void genpd_switch_state(struct device *dev, bool suspend)
  * suspend-to-idle to suspend a corresponding CPU device that is attached to a
  * genpd.
  */
+/* 设备在syscore suspend阶段需要suspend时调用该接口，它也可能在一个attach到
+   genpd的相关cpu，suspend-to-idle流程中调用
+*/
 void dev_pm_genpd_suspend(struct device *dev)
 {
 	genpd_switch_state(dev, true);

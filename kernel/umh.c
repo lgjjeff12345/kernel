@@ -34,6 +34,7 @@
 #define CAP_BSET	(void *)1
 #define CAP_PI		(void *)2
 
+/* 该模块用于支持在内核态运行用户态程序 */
 static kernel_cap_t usermodehelper_bset = CAP_FULL_SET;
 static kernel_cap_t usermodehelper_inheritable = CAP_FULL_SET;
 static DEFINE_SPINLOCK(umh_sysctl_lock);
@@ -63,12 +64,14 @@ static void umh_complete(struct subprocess_info *sub_info)
 /*
  * This is the task which runs the usermode application
  */
+/* 运行用户态应用的任务 */
 static int call_usermodehelper_exec_async(void *data)
 {
 	struct subprocess_info *sub_info = data;
 	struct cred *new;
 	int retval;
 
+	/* flush所有信号的中断处理函数 */
 	spin_lock_irq(&current->sighand->siglock);
 	flush_signal_handlers(current, 1);
 	spin_unlock_irq(&current->sighand->siglock);
@@ -85,8 +88,10 @@ static int call_usermodehelper_exec_async(void *data)
 	 * Our parent (unbound workqueue) runs with elevated scheduling
 	 * priority. Avoid propagating that into the userspace child.
 	 */
+	/* 设置nice值 */
 	set_user_nice(current, 0);
 
+	/* cred设置 */
 	retval = -ENOMEM;
 	new = prepare_kernel_cred(current);
 	if (!new)
@@ -98,6 +103,7 @@ static int call_usermodehelper_exec_async(void *data)
 					     new->cap_inheritable);
 	spin_unlock(&umh_sysctl_lock);
 
+	/* 调用init回调 */
 	if (sub_info->init) {
 		retval = sub_info->init(sub_info, new);
 		if (retval) {
@@ -106,9 +112,11 @@ static int call_usermodehelper_exec_async(void *data)
 		}
 	}
 
+	/* 提交cred */
 	commit_creds(new);
 
 	wait_for_initramfs();
+	/* 执行应用程序 */
 	retval = kernel_execve(sub_info->path,
 			       (const char *const *)sub_info->argv,
 			       (const char *const *)sub_info->envp);

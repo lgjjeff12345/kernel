@@ -27,6 +27,7 @@ struct arm_cpuidle_irq_context {
 	unsigned long daif_bits;
 };
 
+/* cpuidle保存中断上下文 */
 #define arm_cpuidle_save_irq_context(__c)				\
 	do {								\
 		struct arm_cpuidle_irq_context *c = __c;		\

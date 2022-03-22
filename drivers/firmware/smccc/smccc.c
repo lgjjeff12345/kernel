@@ -17,11 +17,16 @@ static enum arm_smccc_conduit smccc_conduit = SMCCC_CONDUIT_NONE;
 bool __ro_after_init smccc_trng_available = false;
 u64 __ro_after_init smccc_has_sve_hint = false;
 
+/* smccc的版本初始化 */
 void __init arm_smccc_version_init(u32 version, enum arm_smccc_conduit conduit)
 {
+	/* 版本为从bl31或hypervisor中读出
+       conduit为smc或hvc
+	*/
 	smccc_version = version;
 	smccc_conduit = conduit;
 
+	/* atf是否支持trng */
 	smccc_trng_available = smccc_probe_trng();
 	if (IS_ENABLED(CONFIG_ARM64_SVE) &&
 	    smccc_version >= ARM_SMCCC_VERSION_1_3)

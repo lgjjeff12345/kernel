@@ -53,16 +53,19 @@ struct fault_info {
 static const struct fault_info fault_info[];
 static struct fault_info debug_fault_info[];
 
+/* 根据esr寄存器的内容，获取其对应fault处理方式 */
 static inline const struct fault_info *esr_to_fault_info(unsigned int esr)
 {
 	return fault_info + (esr & ESR_ELx_FSC);
 }
 
+/* 根据esr寄存器的内容，获取其对应的debug处理函数 */
 static inline const struct fault_info *esr_to_debug_fault_info(unsigned int esr)
 {
 	return debug_fault_info + DBG_ESR_EVT(esr);
 }
 
+/* 打印data abort信息 */
 static void data_abort_decode(unsigned int esr)
 {
 	pr_alert("Data abort info:\n");
@@ -85,6 +88,7 @@ static void data_abort_decode(unsigned int esr)
 		 (esr & ESR_ELx_WNR) >> ESR_ELx_WNR_SHIFT);
 }
 
+/* 打印内存abort信息 */
 static void mem_abort_decode(unsigned int esr)
 {
 	pr_alert("Mem abort info:\n");
@@ -106,9 +110,11 @@ static void mem_abort_decode(unsigned int esr)
 		data_abort_decode(esr);
 }
 
+/* 获取pgd的物理地址 */
 static inline unsigned long mm_to_pgd_phys(struct mm_struct *mm)
 {
 	/* Either init_pg_dir or swapper_pg_dir */
+	/* 内核空间地址 */
 	if (mm == &init_mm)
 		return __pa_symbol(mm->pgd);
 
@@ -118,6 +124,7 @@ static inline unsigned long mm_to_pgd_phys(struct mm_struct *mm)
 /*
  * Dump out the page tables associated with 'addr' in the currently active mm.
  */
+/* 在当前active mm中dump与地址关联的页表 */
 static void show_pte(unsigned long addr)
 {
 	struct mm_struct *mm;
@@ -126,6 +133,7 @@ static void show_pte(unsigned long addr)
 
 	if (is_ttbr0_addr(addr)) {
 		/* TTBR0 */
+		/* 用户空间地址 */
 		mm = current->active_mm;
 		if (mm == &init_mm) {
 			pr_alert("[%016lx] user address but active_mm is swapper\n",
@@ -134,8 +142,10 @@ static void show_pte(unsigned long addr)
 		}
 	} else if (is_ttbr1_addr(addr)) {
 		/* TTBR1 */
+		/* 内核空间地址 */
 		mm = &init_mm;
 	} else {
+		/* 不合法的地址 */
 		pr_alert("[%016lx] address between user and kernel address ranges\n",
 			 addr);
 		return;
@@ -526,6 +536,7 @@ static bool is_write_abort(unsigned int esr)
 	return (esr & ESR_ELx_WNR) && !(esr & ESR_ELx_CM);
 }
 
+/* 处理page fault */
 static int __kprobes do_page_fault(unsigned long far, unsigned int esr,
 				   struct pt_regs *regs)
 {
@@ -818,17 +829,24 @@ static const struct fault_info fault_info[] = {
 	{ do_bad,		SIGKILL, SI_KERNEL,	"unknown 63"			},
 };
 
+/* 内存引起的异常，包括数据和指令异常
+   它由异常处理函数调用
+*/
 void do_mem_abort(unsigned long far, unsigned int esr, struct pt_regs *regs)
 {
 	const struct fault_info *inf = esr_to_fault_info(esr);
+	/* 去除far地址的tag */
 	unsigned long addr = untagged_addr(far);
 
+	/* 调用内存abort相应的处理函数 */
 	if (!inf->fn(far, esr, regs))
 		return;
 
+	/* 非用户态 */
 	if (!user_mode(regs)) {
 		pr_alert("Unhandled fault at 0x%016lx\n", addr);
 		mem_abort_decode(esr);
+		/* 打印该地址相关的页表信息 */
 		show_pte(addr);
 	}
 
@@ -837,6 +855,9 @@ void do_mem_abort(unsigned long far, unsigned int esr, struct pt_regs *regs)
 	 * have been defined as UNKNOWN. Therefore we only expose the untagged
 	 * address to the signal handler.
 	 */
+	/* 我们遇到了一个不能识别的错误类型，因此我们将一个untag的地址传给信号
+	   处理函数 
+	*/
 	arm64_notify_die(inf->name, regs, inf->sig, inf->code, addr, esr);
 }
 NOKPROBE_SYMBOL(do_mem_abort);

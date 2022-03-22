@@ -7,7 +7,7 @@
 /* has the defines to get at the registers. */
 
 #include <linux/types.h>
-
+/* ptrace的功能 */
 #define PTRACE_TRACEME		   0
 #define PTRACE_PEEKTEXT		   1
 #define PTRACE_PEEKDATA		   2

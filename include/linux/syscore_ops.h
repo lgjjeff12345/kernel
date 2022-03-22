@@ -10,6 +10,7 @@
 
 #include <linux/list.h>
 
+/* syscore操作回调 */
 struct syscore_ops {
 	struct list_head node;
 	int (*suspend)(void);

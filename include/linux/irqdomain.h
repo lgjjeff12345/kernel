@@ -313,6 +313,7 @@ static inline struct irq_domain *irq_find_matching_host(struct device_node *node
 	return irq_find_matching_fwnode(of_node_to_fwnode(node), bus_token);
 }
 
+/* 通过设备节点获取其对应的irq_domain结构体 */
 static inline struct irq_domain *irq_find_host(struct device_node *node)
 {
 	struct irq_domain *d;

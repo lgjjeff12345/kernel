@@ -61,19 +61,33 @@
  *				components' next wakeup when determining the
  *				optimal idle state.
  */
+/* 指示在attached设备上电/下电时，genpd会使用pm clk框架 */
 #define GENPD_FLAG_PM_CLK	 (1U << 0)
+/* 指示genpd backend上电/下电回调不会睡眠。因此，其可以在原子上下文中调用 */
 #define GENPD_FLAG_IRQ_SAFE	 (1U << 1)
+/* 指示genpd总是将pm domain保持在上电状态 */
 #define GENPD_FLAG_ALWAYS_ON	 (1U << 2)
+/* 指示genpd将pm domain保持在上电状态,因为与其attach的任何设备会被用于
+   服务系统唤醒的wakup路径上 
+*/
 #define GENPD_FLAG_ACTIVE_WAKEUP (1U << 3)
+/* 指示attach到该genpd上的设备需要是cpu，或其子节点含有attached的cpu。
+   该标志使得genpd backend驱动为cpu和cpu组的idle电源管理。
+   注意：backend驱动在cpu的PM domain中必须遵循last-man-standing算法
+*/
 #define GENPD_FLAG_CPU_DOMAIN	 (1U << 4)
+/* 除了系统suspend之外，genpd需要总是保持PM domain处于上电状态 */
 #define GENPD_FLAG_RPM_ALWAYS_ON (1U << 5)
+/* 使genpd governor在确定最优idle状态时，考虑其组件的下一次wakeup时间 */
 #define GENPD_FLAG_MIN_RESIDENCY (1U << 6)
 
+/* pm domain状态 */
 enum gpd_status {
 	GENPD_STATE_ON = 0,	/* PM domain is on */
 	GENPD_STATE_OFF,	/* PM domain is off */
 };
 
+/* genpd通知 */
 enum genpd_notication {
 	GENPD_NOTIFY_PRE_OFF = 0,
 	GENPD_NOTIFY_OFF,
@@ -81,19 +95,25 @@ enum genpd_notication {
 	GENPD_NOTIFY_ON,
 };
 
+/* power governor */
+/* 电晕governor */
 struct dev_power_governor {
 	bool (*power_down_ok)(struct dev_pm_domain *domain);
 	bool (*suspend_ok)(struct device *dev);
 };
 
+/* 设备操作回调 */
 struct gpd_dev_ops {
 	int (*start)(struct device *dev);
 	int (*stop)(struct device *dev);
 };
 
+/* power状态 */
 struct genpd_power_state {
+	/* 下电延迟 */
 	s64 power_off_latency_ns;
 	s64 power_on_latency_ns;
+	/* 驻留时间 */
 	s64 residency_ns;
 	u64 usage;
 	u64 rejected;
@@ -106,48 +126,77 @@ struct genpd_lock_ops;
 struct dev_pm_opp;
 struct opp_table;
 
+/* 通用pm domain */
 struct generic_pm_domain {
 	struct device dev;
+	/* power domain操作 */
 	struct dev_pm_domain domain;	/* PM domain operations */
+	/* 将本domain 挂到全局的pm domain链表中 */
 	struct list_head gpd_list_node;	/* Node in the global PM domains list */
+	/* parent节点 */
 	struct list_head parent_links;	/* Links with PM domain as a parent */
+	/* child节点 */
 	struct list_head child_links;	/* Links with PM domain as a child */
+	/* 设备链表 */
 	struct list_head dev_list;	/* List of devices */
+	/* 设备的power governor */
 	struct dev_power_governor *gov;
+	/* 下电的work */
 	struct work_struct power_off_work;
 	struct fwnode_handle *provider;	/* Identity of the domain provider */
 	bool has_provider;
+	/* 名字 */
 	const char *name;
+	/* power上电时的子domain数量 */
 	atomic_t sd_count;	/* Number of subdomains with power "on" */
+	/* power domain的状态 */
 	enum gpd_status status;	/* Current state of the domain */
+	/* 设备数量 */
 	unsigned int device_count;	/* Number of devices */
+	/* 系统suspend设备计数器 */
 	unsigned int suspended_count;	/* System suspend device counter */
+	/* prepared设备的suspend计数器 */
 	unsigned int prepared_count;	/* Suspend counter of prepared devices */
+	/* 最大的性能状态 */
 	unsigned int performance_state;	/* Aggregated max performance state */
+	/* attach到该power domain的cpus */
 	cpumask_var_t cpus;		/* A cpumask of the attached CPUs */
+	/* power domain的上下电操作函数 */
 	int (*power_off)(struct generic_pm_domain *domain);
 	int (*power_on)(struct generic_pm_domain *domain);
+	/* 上下电的通知链表 */
 	struct raw_notifier_head power_notifiers; /* Power on/off notifiers */
+	/* 该pd的opp表 */
 	struct opp_table *opp_table;	/* OPP table of the genpd */
+	/* opp转换为performance状态 */
 	unsigned int (*opp_to_performance_state)(struct generic_pm_domain *genpd,
 						 struct dev_pm_opp *opp);
+	/* 设置性能状态 */
 	int (*set_performance_state)(struct generic_pm_domain *genpd,
 				     unsigned int state);
+	/* 设备操作回调 */
 	struct gpd_dev_ops dev_ops;
 	s64 max_off_time_ns;	/* Maximum allowed "suspended" time. */
+	/* 下一次唤醒时间 */
 	ktime_t next_wakeup;	/* Maintained by the domain governor */
 	bool max_off_time_changed;
 	bool cached_power_down_ok;
 	bool cached_power_down_state_idx;
+	/* 设备与power domain的attach和detach回调 */
 	int (*attach_dev)(struct generic_pm_domain *domain,
 			  struct device *dev);
 	void (*detach_dev)(struct generic_pm_domain *domain,
 			   struct device *dev);
+	/* 标志 */
 	unsigned int flags;		/* Bit field of configs for genpd */
+	/* power状态 */
 	struct genpd_power_state *states;
+	/* 释放power状态 */
 	void (*free_states)(struct genpd_power_state *states,
 			    unsigned int state_count);
+	/* 状态数量 */
 	unsigned int state_count; /* number of states */
+	/* off时genpd将会到达的状态 */
 	unsigned int state_idx; /* state that genpd will go to when off */
 	ktime_t on_time;
 	ktime_t accounting_time;
@@ -162,6 +211,7 @@ struct generic_pm_domain {
 
 };
 
+/* 由设备的pm domain获取generic pm domain */
 static inline struct generic_pm_domain *pd_to_genpd(struct dev_pm_domain *pd)
 {
 	return container_of(pd, struct generic_pm_domain, domain);
@@ -178,22 +228,28 @@ struct gpd_link {
 	unsigned int prev_performance_state;
 };
 
+/* gpd的timing数据 */
 struct gpd_timing_data {
+	/* suspend延迟时间 */
 	s64 suspend_latency_ns;
+	/* resume延迟时间 */
 	s64 resume_latency_ns;
 	s64 effective_constraint_ns;
 	bool constraint_changed;
 	bool cached_suspend_ok;
 };
 
+/* pm domain数据 */
 struct pm_domain_data {
 	struct list_head list_node;
 	struct device *dev;
 };
 
+/* gpm的domain数据 */
 struct generic_pm_domain_data {
 	struct pm_domain_data base;
 	struct gpd_timing_data td;
+	/* 通知 */
 	struct notifier_block nb;
 	struct notifier_block *power_nb;
 	int cpu;

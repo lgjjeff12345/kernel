@@ -18,7 +18,7 @@ BLOCKING_NOTIFIER_HEAD(reboot_notifier_list);
  *	Notifier chain core routines.  The exported routines below
  *	are layered on top of these, with appropriate locking added.
  */
-
+/*  注册通知链 */
 static int notifier_chain_register(struct notifier_block **nl,
 		struct notifier_block *n)
 {
@@ -36,6 +36,7 @@ static int notifier_chain_register(struct notifier_block **nl,
 	return 0;
 }
 
+/* 注销通知链 */
 static int notifier_chain_unregister(struct notifier_block **nl,
 		struct notifier_block *n)
 {
@@ -61,6 +62,7 @@ static int notifier_chain_unregister(struct notifier_block **nl,
  *	@returns:	notifier_call_chain returns the value returned by the
  *			last notifier function called.
  */
+/* 调用已注册的通知 */
 static int notifier_call_chain(struct notifier_block **nl,
 			       unsigned long val, void *v,
 			       int nr_to_call, int *nr_calls)
@@ -70,6 +72,7 @@ static int notifier_call_chain(struct notifier_block **nl,
 
 	nb = rcu_dereference_raw(*nl);
 
+	/* 遍历该通知链上的所有元素，并执行对应的回调 */
 	while (nb && nr_to_call) {
 		next_nb = rcu_dereference_raw(nb->next);
 
@@ -109,6 +112,7 @@ NOKPROBE_SYMBOL(notifier_call_chain);
  *
  * Returns:	the return value of the @val_up call.
  */
+/* 调用一个事件已注册的通知，若执行失败，则调用val_down执行回滚操作 */
 static int notifier_call_chain_robust(struct notifier_block **nl,
 				     unsigned long val_up, unsigned long val_down,
 				     void *v)
@@ -136,6 +140,7 @@ static int notifier_call_chain_robust(struct notifier_block **nl,
  *
  *	Currently always returns zero.
  */
+ /*  注册通知链 */
 int atomic_notifier_chain_register(struct atomic_notifier_head *nh,
 		struct notifier_block *n)
 {
@@ -158,6 +163,7 @@ EXPORT_SYMBOL_GPL(atomic_notifier_chain_register);
  *
  *	Returns zero on success or %-ENOENT on failure.
  */
+/*	注销通知链 */
 int atomic_notifier_chain_unregister(struct atomic_notifier_head *nh,
 		struct notifier_block *n)
 {
@@ -172,6 +178,7 @@ int atomic_notifier_chain_unregister(struct atomic_notifier_head *nh,
 }
 EXPORT_SYMBOL_GPL(atomic_notifier_chain_unregister);
 
+/* 调用一个事件已注册的通知，若执行失败，则调用val_down执行回滚操作 */
 int atomic_notifier_call_chain_robust(struct atomic_notifier_head *nh,
 		unsigned long val_up, unsigned long val_down, void *v)
 {
@@ -208,6 +215,7 @@ NOKPROBE_SYMBOL(atomic_notifier_call_chain_robust);
  *	Otherwise the return value is the return value
  *	of the last notifier function called.
  */
+/* 调用已注册的通知 */
 int atomic_notifier_call_chain(struct atomic_notifier_head *nh,
 			       unsigned long val, void *v)
 {

@@ -384,6 +384,7 @@ static inline int pm_runtime_get(struct device *dev)
  * if its return value is checked by the caller, as this is likely to result
  * in cleaner code.
  */
+/* bump up运行时pm的使用计数，并且同步执行runtime-resume */
 static inline int pm_runtime_get_sync(struct device *dev)
 {
 	return __pm_runtime_resume(dev, RPM_GET_PUT);

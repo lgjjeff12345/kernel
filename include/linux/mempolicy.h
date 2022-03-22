@@ -42,6 +42,10 @@ struct mm_struct;
  * to the new storage.  The reference count of the new object is initialized
  * to 1, representing the caller of mpol_dup().
  */
+/* 描述一个内存策略
+   内存策略可以与进程或VMA关联。对于VMA相关的分配，倾向于使用VMA策略，否则
+   使用进程策略。中断会忽略当前进程的内存策略
+*/
 struct mempolicy {
 	atomic_t refcnt;
 	unsigned short mode; 	/* See MPOL_* above */

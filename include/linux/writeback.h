@@ -38,8 +38,11 @@ struct backing_dev_info;
 /*
  * fs/fs-writeback.c
  */
+/* 写回的同步模式 */
 enum writeback_sync_modes {
+	/* 不同步 */
 	WB_SYNC_NONE,	/* Don't wait on anything */
+	/* 在所有的mapping中等待 */
 	WB_SYNC_ALL,	/* Wait on every mapping */
 };
 
@@ -48,9 +51,12 @@ enum writeback_sync_modes {
  * always on the stack, and hence need no locking.  They are always initialised
  * in a manner such that unspecified fields are set to zero.
  */
+/* 写回控制结构体 */
 struct writeback_control {
+	/* 写入的页数量，每写入一个页时，该计数减一 */
 	long nr_to_write;		/* Write this many pages, and decrement
 					   this for each page written */
+	/* 跳过不写的页数目 */
 	long pages_skipped;		/* Pages which were not written */
 
 	/*
@@ -58,11 +64,22 @@ struct writeback_control {
 	 * a hint that the filesystem need only write out the pages inside that
 	 * byterange.  The byte at `end' is included in the writeout request.
 	 */
+	/* 写入的起始位置 */
 	loff_t range_start;
+	/* 写入的结束位置 */
 	loff_t range_end;
 
+	/* 写回的同步模式 */
 	enum writeback_sync_modes sync_mode;
 
+	/*
+      for_kupdate：kupdate写回
+      for_background：background写回
+      tagged_writepages：tag-and-write以避免livelock
+      for_reclaim：由页分配器触发的写回
+      range_cyclic：range_start是循环的
+      for_sync：sync(2) WB_SYNC_ALL写回
+	*/
 	unsigned for_kupdate:1;		/* A kupdate writeback */
 	unsigned for_background:1;	/* A background writeback */
 	unsigned tagged_writepages:1;	/* tag-and-write to avoid livelock */
@@ -80,6 +97,7 @@ struct writeback_control {
 
 	unsigned punt_to_cgroup:1;	/* cgrp punting, see __REQ_CGROUP_PUNT */
 
+	/* cgroup写回 */
 #ifdef CONFIG_CGROUP_WRITEBACK
 	struct bdi_writeback *wb;	/* wb this writeback is issued under */
 	struct inode *inode;		/* inode being written out */

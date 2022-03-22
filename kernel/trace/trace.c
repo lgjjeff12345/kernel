@@ -412,6 +412,7 @@ int unregister_ftrace_export(struct trace_export *export)
 EXPORT_SYMBOL_GPL(unregister_ftrace_export);
 
 /* trace_flags holds trace_options default values */
+/* 默认的trace标志 */
 #define TRACE_DEFAULT_FLAGS						\
 	(FUNCTION_DEFAULT_FLAGS |					\
 	 TRACE_ITER_PRINT_PARENT | TRACE_ITER_PRINTK |			\
@@ -432,6 +433,7 @@ EXPORT_SYMBOL_GPL(unregister_ftrace_export);
  * The global_trace is the descriptor that holds the top-level tracing
  * buffers for the live tracing.
  */
+/* global_trace为live tracing持有了顶级tracing buffers */
 static struct trace_array global_trace = {
 	.trace_flags = TRACE_DEFAULT_FLAGS,
 };
@@ -772,22 +774,28 @@ int trace_pid_write(struct trace_pid_list *filtered_pids,
 	return read;
 }
 
+/* 获取buffer的当前时间戳 */
 static u64 buffer_ftrace_now(struct array_buffer *buf, int cpu)
 {
 	u64 ts;
 
 	/* Early boot up does not have a buffer yet */
+	/* early boot不含有buffer，此时返回本地cpu的时间 */
 	if (!buf->buffer)
 		return trace_clock_local();
 
+	/* 通过buffer的clock()接口获取时间戳 */
 	ts = ring_buffer_time_stamp(buf->buffer);
+	/* 移位调整时间戳的值 */
 	ring_buffer_normalize_time_stamp(buf->buffer, cpu, &ts);
 
 	return ts;
 }
 
+/* 获取ftrace的当前时间戳 */
 u64 ftrace_now(int cpu)
 {
+	/* 获取buffer的当前时间戳 */
 	return buffer_ftrace_now(&global_trace.array_buffer, cpu);
 }
 
@@ -800,6 +808,8 @@ u64 ftrace_now(int cpu)
  * need to know the accurate state, use tracing_is_on() which is a little
  * slower, but accurate.
  */
+/* 判断global trace是否被使能
+*/
 int tracing_is_enabled(void)
 {
 	/*
@@ -1423,6 +1433,7 @@ int tracing_snapshot_cond_disable(struct trace_array *tr)
 EXPORT_SYMBOL_GPL(tracing_snapshot_cond_disable);
 #endif /* CONFIG_TRACER_SNAPSHOT */
 
+/* 关闭tracer的tracing */
 void tracer_tracing_off(struct trace_array *tr)
 {
 	if (tr->array_buffer.buffer)
@@ -1448,6 +1459,10 @@ void tracer_tracing_off(struct trace_array *tr)
  * be causing. This function simply causes all recording to
  * the ring buffers to fail.
  */
+/* 关闭tracing buffer
+   该函数将停止tracing buffer对数据的记录。它不会禁用跟踪程序本身可能导致
+   的任何开销。此功能只会导致对环形缓冲区的所有记录失败
+*/
 void tracing_off(void)
 {
 	tracer_tracing_off(&global_trace);
@@ -2056,6 +2071,7 @@ static void __init apply_trace_boot_options(void);
  *
  * Register a new plugin tracer.
  */
+/* 通过ftrace系统注册一个新的tracer */
 int __init register_tracer(struct tracer *type)
 {
 	struct tracer *t;
@@ -2157,6 +2173,7 @@ static void tracing_reset_cpu(struct array_buffer *buf, int cpu)
 	ring_buffer_record_enable(buffer);
 }
 
+/* 重置在线cpu的tracing */
 void tracing_reset_online_cpus(struct array_buffer *buf)
 {
 	struct trace_buffer *buffer = buf->buffer;
@@ -2164,15 +2181,20 @@ void tracing_reset_online_cpus(struct array_buffer *buf)
 	if (!buffer)
 		return;
 
+	/* 关闭ring buffer的写功能 */
 	ring_buffer_record_disable(buffer);
 
 	/* Make sure all commits have finished */
+	/* 确保所有已提交的操作都完成 */
 	synchronize_rcu();
 
+	/* 获取tracer buffer的当前时间戳 */
 	buf->time_start = buffer_ftrace_now(buf, buf->cpu);
 
+	/* 重置一个ring buffer的per cpu buffer */
 	ring_buffer_reset_online_cpus(buffer);
 
+	/* 使能ring buffer的写功能 */
 	ring_buffer_record_enable(buffer);
 }
 
@@ -6090,9 +6112,12 @@ tracing_set_trace_read(struct file *filp, char __user *ubuf,
 	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
 }
 
+/* tracer初始化函数 */
 int tracer_init(struct tracer *t, struct trace_array *tr)
 {
+	/* 重置在线cpu的tracing */
 	tracing_reset_online_cpus(&tr->array_buffer);
+	/* 执行其init函数 */
 	return t->init(tr);
 }
 
@@ -6278,6 +6303,7 @@ static void add_tracer_options(struct trace_array *tr, struct tracer *t)
 	create_trace_option_files(tr, t);
 }
 
+/* 设置tracer */
 int tracing_set_tracer(struct trace_array *tr, const char *buf)
 {
 	struct tracer *t;

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #include <linux/pm_qos.h>
 
+/* common的pm初始化函数 */
 static inline void device_pm_init_common(struct device *dev)
 {
 	if (!dev->power.early_init) {
@@ -28,6 +29,7 @@ extern u64 pm_runtime_active_time(struct device *dev);
 #define WAKE_IRQ_DEDICATED_MASK		(WAKE_IRQ_DEDICATED_ALLOCATED | \
 					 WAKE_IRQ_DEDICATED_MANAGED)
 
+/* 唤醒中断 */
 struct wake_irq {
 	struct device *dev;
 	unsigned int status;
@@ -158,6 +160,7 @@ static inline int pm_wakeup_source_sysfs_add(struct device *parent)
 
 #endif /* !CONFIG_PM_SLEEP */
 
+/* 初始化设备的pm */
 static inline void device_pm_init(struct device *dev)
 {
 	device_pm_init_common(dev);

@@ -525,6 +525,14 @@ bool oops_may_print(void)
  * the right duration, whereas all the other CPUs pause for twice as long:
  * once in oops_enter(), once in oops_exit().
  */
+/* 进入oops
+   当架构没有打印任何东西，而进入其oops处理函数时调用。若其是第一个进入
+   oops的cpu，且是其第一次进入oops，则继续
+   它由pause_on_oops内核启动选项使能，并确保oops不会引起屏幕滚动。它具有
+   避免后面进入oops的cpu使得信息显示不正常的问题。
+   允许打印的CPU最终在正确的时间暂停，而所有其他CPU的暂停时间是正确的两倍，
+   一次为进入oops_enter，一次为进入oops_exit。
+*/
 void oops_enter(void)
 {
 	tracing_off();

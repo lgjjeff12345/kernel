@@ -26,6 +26,7 @@ static int __init cpu_psci_cpu_init(unsigned int cpu)
 	return 0;
 }
 
+/* 确认psci接口中是否实现了cpu_on接口 */
 static int __init cpu_psci_cpu_prepare(unsigned int cpu)
 {
 	if (!psci_ops.cpu_on) {
@@ -36,6 +37,7 @@ static int __init cpu_psci_cpu_prepare(unsigned int cpu)
 	return 0;
 }
 
+/* 启动cpu，调用cpu_on接口 */
 static int cpu_psci_cpu_boot(unsigned int cpu)
 {
 	phys_addr_t pa_secondary_entry = __pa_symbol(function_nocfi(secondary_entry));
@@ -47,8 +49,12 @@ static int cpu_psci_cpu_boot(unsigned int cpu)
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
+/* cpu是否可以被disable */
 static bool cpu_psci_cpu_can_disable(unsigned int cpu)
 {
+	/* 对于含有trust os且trust os运行在单个cpu上的系统,trust os resident cpu
+	   不能被disable 
+	*/
 	return !psci_tos_resident_on(cpu);
 }
 
@@ -65,6 +71,7 @@ static int cpu_psci_cpu_disable(unsigned int cpu)
 	return 0;
 }
 
+/* cpu off接口 */
 static void cpu_psci_cpu_die(unsigned int cpu)
 {
 	/*
@@ -109,6 +116,7 @@ static int cpu_psci_cpu_kill(unsigned int cpu)
 }
 #endif
 
+/* psci的cpu ops */
 const struct cpu_operations cpu_psci_ops = {
 	.name		= "psci",
 	.cpu_init	= cpu_psci_cpu_init,

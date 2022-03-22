@@ -13,6 +13,7 @@
 
 extern bool smccc_trng_available;
 
+/* 从atf中获取trng版本，并判断其是否支持trng */
 static inline bool __init smccc_probe_trng(void)
 {
 	struct arm_smccc_res res;

@@ -59,9 +59,13 @@ static inline unsigned long topology_get_thermal_pressure(int cpu)
 void topology_set_thermal_pressure(const struct cpumask *cpus,
 				   unsigned long th_pressure);
 
+/* cpu拓扑 */
 struct cpu_topology {
+	/* 超线程cpu的线程id号 */
 	int thread_id;
+	/* core id号 */
 	int core_id;
+	/* cluster或socket */
 	int package_id;
 	int llc_id;
 	cpumask_t thread_sibling;

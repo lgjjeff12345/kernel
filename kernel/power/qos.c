@@ -525,6 +525,7 @@ int freq_qos_apply(struct freq_qos_request *req,
  * Return 1 if the effective constraint value has changed, 0 if the effective
  * constraint value has not changed, or a negative error code on failures.
  */
+/* 向一个给定链表中插入一个新的频率Qos请求 */
 int freq_qos_add_request(struct freq_constraints *qos,
 			 struct freq_qos_request *req,
 			 enum freq_qos_req_type type, s32 value)

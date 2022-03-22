@@ -280,6 +280,7 @@ EXPORT_SYMBOL_GPL(ring_buffer_event_data);
 #define for_each_buffer_cpu(buffer, cpu)		\
 	for_each_cpu(cpu, buffer->cpumask)
 
+/* 遍历并获取online cpu与buffer cpumask的交集 */
 #define for_each_online_buffer_cpu(buffer, cpu)		\
 	for_each_cpu_and(cpu, buffer->cpumask, cpu_online_mask)
 
@@ -303,9 +304,13 @@ static u64 rb_event_time_stamp(struct ring_buffer_event *event)
 /* Missed count stored at end */
 #define RB_MISSED_STORED	(1 << 30)
 
+/* buffer数据page */
 struct buffer_data_page {
+	/* page的时间戳 */
 	u64		 time_stamp;	/* page time stamp */
+	/* 写commited index  */
 	local_t		 commit;	/* write committed index */
+	/* buffer page的数据 */
 	unsigned char	 data[] RB_ALIGN_DATA;	/* data of buffer page */
 };
 
@@ -317,6 +322,12 @@ struct buffer_data_page {
  * add flags in the list struct pointers, to make the ring buffer
  * lockless.
  */
+/* write：next写index
+   read：next读index
+   entries：在本page中的entries
+   real_end：实际的数据尾
+   page：实际的数据page
+*/
 struct buffer_page {
 	struct list_head list;		/* list of buffer pages */
 	local_t		 write;		/* index for next write */
@@ -413,6 +424,8 @@ struct rb_irq_work {
 /*
  * Structure to hold event state and handle nested events.
  */
+/* 用于保存事件状态和处理嵌套事
+*/
 struct rb_event_info {
 	u64			ts;
 	u64			delta;
@@ -430,6 +443,12 @@ struct rb_event_info {
  *  ABSOLUTE - the buffer requests all events to have absolute time stamps
  *  FORCE - force a full time stamp.
  */
+/* 用于添加时间戳
+   RB_ADD_STAMP_NONE：不添加
+   RB_ADD_STAMP_EXTEND：时间戳扩展
+   RB_ADD_STAMP_ABSOLUTE：绝对时间戳
+   RB_ADD_STAMP_FORCE：强制一个full time时间戳
+*/
 enum {
 	RB_ADD_STAMP_NONE		= 0,
 	RB_ADD_STAMP_EXTEND		= BIT(1),
@@ -446,6 +465,13 @@ enum {
  *
  * See trace_recursive_lock() comment below for more details.
  */
+/* 该事件在哪个事件上下文中
+   TRANSITION上下文
+   nmi上下文
+   irq上下文
+   软中断上下文
+   normal上下文
+*/
 enum {
 	RB_CTX_TRANSITION,
 	RB_CTX_NMI,
@@ -482,16 +508,22 @@ typedef struct rb_time_struct rb_time_t;
 /*
  * head_page == tail_page && head == tail then buffer is empty.
  */
+/* percpu的ringbuffer */
 struct ring_buffer_per_cpu {
+	/* 该ringbuffer对应的cpu */
 	int				cpu;
+	/* 关闭record和resize功能 */
 	atomic_t			record_disabled;
 	atomic_t			resize_disabled;
 	struct trace_buffer	*buffer;
 	raw_spinlock_t			reader_lock;	/* serialize readers */
 	arch_spinlock_t			lock;
 	struct lock_class_key		lock_key;
+	/* buffer page数据 */
 	struct buffer_data_page		*free_page;
+	/* page数目 */
 	unsigned long			nr_pages;
+	/* 当前上下文 */
 	unsigned int			current_context;
 	struct list_head		*pages;
 	struct buffer_page		*head_page;	/* read from head */
@@ -527,16 +559,22 @@ struct ring_buffer_per_cpu {
 	struct rb_irq_work		irq_work;
 };
 
+/* trace buffer */
 struct trace_buffer {
 	unsigned			flags;
 	int				cpus;
+	/* 该值用于判断是否允许向ringbuffer中写，若其为非0，
+	   则向buffer中的所以写操作都不允许 
+	*/
 	atomic_t			record_disabled;
+	/* 该trace buffer支持的cpu mask */
 	cpumask_var_t			cpumask;
 
 	struct lock_class_key		*reader_lock_key;
 
 	struct mutex			mutex;
 
+	/* per cpu的ringbuffer */
 	struct ring_buffer_per_cpu	**buffers;
 
 	struct hlist_node		node;
@@ -546,6 +584,7 @@ struct trace_buffer {
 	bool				time_stamp_abs;
 };
 
+/* 循环缓冲区迭代器 */
 struct ring_buffer_iter {
 	struct ring_buffer_per_cpu	*cpu_buffer;
 	unsigned long			head;
@@ -1066,6 +1105,7 @@ __poll_t ring_buffer_poll_wait(struct trace_buffer *buffer, int cpu,
 /* Up this if you want to test the TIME_EXTENTS and normalization */
 #define DEBUG_SHIFT 0
 
+/* 通过buffer的clock()接口获取时间戳 */
 static inline u64 rb_time_stamp(struct trace_buffer *buffer)
 {
 	u64 ts;
@@ -3915,6 +3955,9 @@ static bool rb_per_cpu_empty(struct ring_buffer_per_cpu *cpu_buffer)
  *
  * The caller should call synchronize_rcu() after this.
  */
+/* 关闭ring buffer记录，即停止所有向ringbuffer中的写操作。
+   该调用之后必须调用synchronize_rcu
+*/
 void ring_buffer_record_disable(struct trace_buffer *buffer)
 {
 	atomic_inc(&buffer->record_disabled);
@@ -3928,6 +3971,7 @@ EXPORT_SYMBOL_GPL(ring_buffer_record_disable);
  * Note, multiple disables will need the same number of enables
  * to truly enable the writing (much like preempt_disable).
  */
+/* 使能ring buffer的写功能 */
 void ring_buffer_record_enable(struct trace_buffer *buffer)
 {
 	atomic_dec(&buffer->record_disabled);
@@ -3945,6 +3989,7 @@ EXPORT_SYMBOL_GPL(ring_buffer_record_enable);
  * it works like an on/off switch, where as the disable() version
  * must be paired with a enable().
  */
+/* 停止所有向ringbuffer中的写操作 */
 void ring_buffer_record_off(struct trace_buffer *buffer)
 {
 	unsigned int rd;
@@ -3968,6 +4013,7 @@ EXPORT_SYMBOL_GPL(ring_buffer_record_off);
  * it works like an on/off switch, where as the enable() version
  * must be paired with a disable().
  */
+/* 开启ringbuffer的写操作 */
 void ring_buffer_record_on(struct trace_buffer *buffer)
 {
 	unsigned int rd;
@@ -3986,6 +4032,7 @@ EXPORT_SYMBOL_GPL(ring_buffer_record_on);
  *
  * Returns true if the ring buffer is in a state that it accepts writes.
  */
+/* 判断ringbuffer是否允许写 */
 bool ring_buffer_record_is_on(struct trace_buffer *buffer)
 {
 	return !atomic_read(&buffer->record_disabled);
@@ -5091,6 +5138,7 @@ unsigned long ring_buffer_size(struct trace_buffer *buffer, int cpu)
 }
 EXPORT_SYMBOL_GPL(ring_buffer_size);
 
+/* 重置cpu buffer的状态 */
 static void
 rb_reset_cpu(struct ring_buffer_per_cpu *cpu_buffer)
 {
@@ -5140,6 +5188,7 @@ rb_reset_cpu(struct ring_buffer_per_cpu *cpu_buffer)
 }
 
 /* Must have disabled the cpu buffer then done a synchronize_rcu */
+/* 重置已经disable的cpu buffer状态 */
 static void reset_disabled_cpu_buffer(struct ring_buffer_per_cpu *cpu_buffer)
 {
 	unsigned long flags;
@@ -5151,6 +5200,7 @@ static void reset_disabled_cpu_buffer(struct ring_buffer_per_cpu *cpu_buffer)
 
 	arch_spin_lock(&cpu_buffer->lock);
 
+	/* 重置cpu buffer的状态 */
 	rb_reset_cpu(cpu_buffer);
 
 	arch_spin_unlock(&cpu_buffer->lock);
@@ -5194,6 +5244,7 @@ EXPORT_SYMBOL_GPL(ring_buffer_reset_cpu);
  * @buffer: The ring buffer to reset a per cpu buffer of
  * @cpu: The CPU buffer to be reset
  */
+/* 重置一个ring buffer的per cpu buffer */
 void ring_buffer_reset_online_cpus(struct trace_buffer *buffer)
 {
 	struct ring_buffer_per_cpu *cpu_buffer;
@@ -5202,21 +5253,24 @@ void ring_buffer_reset_online_cpus(struct trace_buffer *buffer)
 	/* prevent another thread from changing buffer sizes */
 	mutex_lock(&buffer->mutex);
 
+	/* 遍历并获取online cpu与buffer cpumask的交集 */
 	for_each_online_buffer_cpu(buffer, cpu) {
 		cpu_buffer = buffer->buffers[cpu];
-
+		/* disable该cpu buffer的resize和record功能 */
 		atomic_inc(&cpu_buffer->resize_disabled);
 		atomic_inc(&cpu_buffer->record_disabled);
 	}
 
 	/* Make sure all commits have finished */
+	/* 确保所有的提交都已完成 */
 	synchronize_rcu();
 
+	/* 对所有online的buffer cpu，执行重置操作 */
 	for_each_online_buffer_cpu(buffer, cpu) {
 		cpu_buffer = buffer->buffers[cpu];
-
+		/* 重置已经disable的cpu buffer状态 */
 		reset_disabled_cpu_buffer(cpu_buffer);
-
+		/* 使能该cpu buffer的record和resize功能 */
 		atomic_dec(&cpu_buffer->record_disabled);
 		atomic_dec(&cpu_buffer->resize_disabled);
 	}

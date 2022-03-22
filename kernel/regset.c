@@ -58,6 +58,7 @@ EXPORT_SYMBOL(regset_get_alloc);
  * @size:	amount of data to copy, in bytes
  * @data:	user-mode pointer to copy into
  */
+/* 获取一个线程的user_regset数据，并将其拷贝到用户地址空间 */
 int copy_regset_to_user(struct task_struct *target,
 			const struct user_regset_view *view,
 			unsigned int setno,

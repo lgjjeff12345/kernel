@@ -512,6 +512,7 @@ static struct thermal_cooling_device_ops cpufreq_cooling_ops = {
  * Return: a valid struct thermal_cooling_device pointer on success,
  * on failure, it returns a corresponding ERR_PTR().
  */
+/* 注册cpufreq cooling设备 */
 static struct thermal_cooling_device *
 __cpufreq_cooling_register(struct device_node *np,
 			struct cpufreq_policy *policy,
@@ -590,6 +591,7 @@ __cpufreq_cooling_register(struct device_node *np,
 	if (!name)
 		goto remove_qos_req;
 
+	/* 这次cooling设备 */
 	cdev = thermal_of_cooling_device_register(np, name, cpufreq_cdev,
 						  cooling_ops);
 	kfree(name);
@@ -645,6 +647,13 @@ EXPORT_SYMBOL_GPL(cpufreq_cooling_register);
  * Return: a valid struct thermal_cooling_device pointer on success,
  * and NULL on failure.
  */
+/* 创建cpufreq的cooling设备
+   cpufreq cooling设备名为thermal-cpufreq-%x。该api可以支持多种cpufreq
+   cooling设备实例。使用该API，cpufreq cooling设备将会链接到设备树的节
+   点上。
+   使用该函数，cooling设备将通过使用一个简单的cpu power模型，实现power
+   扩展。cpu必须使用opp库注册它们的opps
+*/
 struct thermal_cooling_device *
 of_cpufreq_cooling_register(struct cpufreq_policy *policy)
 {
@@ -657,9 +666,12 @@ of_cpufreq_cooling_register(struct cpufreq_policy *policy)
 		return NULL;
 	}
 
+	/* 获取该cpu的#cooling-cells属性 */
 	if (of_find_property(np, "#cooling-cells", NULL)) {
+		/* 获取该cpu对应的energy model perf domain */
 		struct em_perf_domain *em = em_cpu_get(policy->cpu);
 
+		/* 注册cpufreq cooling设备 */
 		cdev = __cpufreq_cooling_register(np, policy, em);
 		if (IS_ERR(cdev)) {
 			pr_err("cpufreq_cooling: cpu%d failed to register as cooling device: %ld\n",

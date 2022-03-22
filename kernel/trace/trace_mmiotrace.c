@@ -33,6 +33,7 @@ static void mmio_reset_data(struct trace_array *tr)
 	tracing_reset_online_cpus(&tr->array_buffer);
 }
 
+/* mmio trace初始化函数 */
 static int mmio_trace_init(struct trace_array *tr)
 {
 	pr_debug("in %s\n", __func__);

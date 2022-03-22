@@ -20,6 +20,7 @@ struct mfd_cell;
 struct property_entry;
 struct platform_device_id;
 
+/* 平台设备定义 */
 struct platform_device {
 	const char	*name;
 	int		id;
@@ -27,6 +28,7 @@ struct platform_device {
 	struct device	dev;
 	u64		platform_dma_mask;
 	struct device_dma_parameters dma_parms;
+	/* 该平台设备的资源 */
 	u32		num_resources;
 	struct resource	*resource;
 
@@ -37,6 +39,7 @@ struct platform_device {
 	struct mfd_cell *mfd_cell;
 
 	/* arch specific additions */
+	/* arch特定的数据 */
 	struct pdev_archdata	archdata;
 };
 

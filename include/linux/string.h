@@ -243,6 +243,7 @@ static inline void memzero_explicit(void *s, size_t count)
  *
  * @path: path to extract the filename from.
  */
+/* 获取该路径的basename，其去掉其路径部分 */
 static inline const char *kbasename(const char *path)
 {
 	const char *tail = strrchr(path, '/');

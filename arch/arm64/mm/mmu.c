@@ -1211,6 +1211,7 @@ static inline pte_t *fixmap_pte(unsigned long addr)
  * lm_alias so __p*d_populate functions must be used to populate with the
  * physical address from __pa_symbol.
  */
+/* early fixmap初始化 */
 void __init early_fixmap_init(void)
 {
 	pgd_t *pgdp;

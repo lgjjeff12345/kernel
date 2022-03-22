@@ -1019,8 +1019,12 @@ EXPORT_SYMBOL(__page_cache_alloc);
  */
 #define PAGE_WAIT_TABLE_BITS 8
 #define PAGE_WAIT_TABLE_SIZE (1 << PAGE_WAIT_TABLE_BITS)
+/* 一共256个等待队列 */
 static wait_queue_head_t page_wait_table[PAGE_WAIT_TABLE_SIZE] __cacheline_aligned;
 
+/* 获取该page对应的等待队列。
+   一共有256个等待队列，对于hash冲突的page则共享一个等待队列
+*/
 static wait_queue_head_t *page_waitqueue(struct page *page)
 {
 	return &page_wait_table[hash_ptr(page, PAGE_WAIT_TABLE_BITS)];
@@ -1356,8 +1360,10 @@ repeat:
 	return wait->flags & WQ_FLAG_WOKEN ? 0 : -EINTR;
 }
 
+/* 等待该page对应的等待队列写回完成 */
 void wait_on_page_bit(struct page *page, int bit_nr)
 {
+	/* 获取该page对应的等待队列 */
 	wait_queue_head_t *q = page_waitqueue(page);
 	wait_on_page_bit_common(q, page, bit_nr, TASK_UNINTERRUPTIBLE, SHARED);
 }

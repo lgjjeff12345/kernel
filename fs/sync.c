@@ -126,6 +126,7 @@ SYSCALL_DEFINE0(sync)
 	return 0;
 }
 
+/* 执行同步work */
 static void do_sync_work(struct work_struct *work)
 {
 	int nowait = 0;
@@ -134,6 +135,9 @@ static void do_sync_work(struct work_struct *work)
 	 * Sync twice to reduce the possibility we skipped some inodes / pages
 	 * because they were temporarily locked
 	 */
+	/* 同步inodes，fs和bdev
+       这里会执行两遍同步操作
+	*/
 	iterate_supers(sync_inodes_one_sb, &nowait);
 	iterate_supers(sync_fs_one_sb, &nowait);
 	iterate_bdevs(fdatawrite_one_bdev, NULL);
@@ -144,10 +148,12 @@ static void do_sync_work(struct work_struct *work)
 	kfree(work);
 }
 
+/* emergency同步 */
 void emergency_sync(void)
 {
 	struct work_struct *work;
 
+	/* 初始化一个work，并执行 */
 	work = kmalloc(sizeof(*work), GFP_ATOMIC);
 	if (work) {
 		INIT_WORK(work, do_sync_work);

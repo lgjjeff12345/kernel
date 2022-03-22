@@ -504,6 +504,7 @@ void free_initmem(void)
 	vunmap_range((u64)__init_begin, (u64)__init_end);
 }
 
+/* dump内存的limit信息 */
 void dump_mem_limit(void)
 {
 	if (memory_limit != PHYS_ADDR_MAX) {

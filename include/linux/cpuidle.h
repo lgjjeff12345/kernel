@@ -15,6 +15,7 @@
 #include <linux/list.h>
 #include <linux/hrtimer.h>
 
+/* 最大的cpuidle状态数量 */
 #define CPUIDLE_STATE_MAX	10
 #define CPUIDLE_NAME_LEN	16
 #define CPUIDLE_DESC_LEN	32
@@ -45,21 +46,30 @@ struct cpuidle_state_usage {
 #endif
 };
 
+/* cpuidle状态 */
 struct cpuidle_state {
+	/* 状态名字、描述 */
 	char		name[CPUIDLE_NAME_LEN];
 	char		desc[CPUIDLE_DESC_LEN];
 
+	/* 该idle状态返回的latency，ns */
 	s64		exit_latency_ns;
+	/* 进入该idle状态期望的停留时间，ns */
 	s64		target_residency_ns;
+	/* 该状态的标志 */
 	unsigned int	flags;
+	/* 该idle状态返回的latency，ms */
 	unsigned int	exit_latency; /* in US */
+	/* cpu在该idle状态下的功耗，mw */
 	int		power_usage; /* in mW */
+	/* 进入该idle状态期望的停留时间，us */
 	unsigned int	target_residency; /* in US */
 
+	/* 进入idle回调 */
 	int (*enter)	(struct cpuidle_device *dev,
 			struct cpuidle_driver *drv,
 			int index);
-
+	/* cpu长时间不工作时（offline），可调用该回调 */
 	int (*enter_dead) (struct cpuidle_device *dev, int index);
 
 	/*
@@ -70,6 +80,10 @@ struct cpuidle_state {
 	 * This callback may point to the same function as ->enter if all of
 	 * the above requirements are met by it.
 	 */
+	/* 执行该回调需要suspend本cpu tick，以及整个timekeeping，因此其不能
+       在任何位置重新使能中断，或试图改变clock event设备的状态。
+       在以上条件满足时，该回调可能与enter指向同一个函数
+	*/
 	int (*enter_s2idle)(struct cpuidle_device *dev,
 			    struct cpuidle_driver *drv,
 			    int index);
@@ -77,36 +91,53 @@ struct cpuidle_state {
 
 /* Idle State Flags */
 #define CPUIDLE_FLAG_NONE       	(0x00)
+/* polling状态 */
 #define CPUIDLE_FLAG_POLLING		BIT(0) /* polling state */
+/* 该状态会同时在多个cpu上起作用，软件需做同步 */
 #define CPUIDLE_FLAG_COUPLED		BIT(1) /* state applies to multiple cpus */
+/* 该状态下，timer会停止 */
 #define CPUIDLE_FLAG_TIMER_STOP 	BIT(2) /* timer is stopped on this state */
+/* 避免使用该状态 */
 #define CPUIDLE_FLAG_UNUSABLE		BIT(3) /* avoid using this state */
+/* 默认关闭该状态 */
 #define CPUIDLE_FLAG_OFF		BIT(4) /* disable this state by default */
+/* idle-state会刷tlb */
 #define CPUIDLE_FLAG_TLB_FLUSHED	BIT(5) /* idle-state flushes TLBs */
+/* idle-state会关注RCU */
 #define CPUIDLE_FLAG_RCU_IDLE		BIT(6) /* idle-state takes care of RCU */
 
 struct cpuidle_device_kobj;
 struct cpuidle_state_kobj;
 struct cpuidle_driver_kobj;
 
+/* cpuidle设备结构体 */
 struct cpuidle_device {
+	/* 该cpuidle设备是否已注册 */
 	unsigned int		registered:1;
+	/* 该cpuidle设备是否已使能 */
 	unsigned int		enabled:1;
 	unsigned int		poll_time_limit:1;
+	/* 其对应的cpu */
 	unsigned int		cpu;
 	ktime_t			next_hrtimer;
 
+	/* 上一次进入idle的状态index */
 	int			last_state_idx;
+	/* 该设备上一次停留在idle状态的时间，单位为ns */
 	u64			last_residency_ns;
 	u64			poll_limit_ns;
 	u64			forced_idle_latency_limit_ns;
+	/* 该设备的统计值 */
 	struct cpuidle_state_usage	states_usage[CPUIDLE_STATE_MAX];
+	/* 用于sysfs */
 	struct cpuidle_state_kobj *kobjs[CPUIDLE_STATE_MAX];
 	struct cpuidle_driver_kobj *kobj_driver;
 	struct cpuidle_device_kobj *kobj_dev;
+	/* 链表节点 */
 	struct list_head 	device_list;
 
 #ifdef CONFIG_ARCH_NEEDS_CPU_IDLE_COUPLED
+	/* 与其相关的coupled cpus位表 */
 	cpumask_t		coupled_cpus;
 	struct cpuidle_coupled	*coupled;
 #endif
@@ -118,22 +149,32 @@ DECLARE_PER_CPU(struct cpuidle_device, cpuidle_dev);
 /****************************
  * CPUIDLE DRIVER INTERFACE *
  ****************************/
-
+/* cpuidle驱动 */
 struct cpuidle_driver {
+	/* 驱动名 */
 	const char		*name;
 	struct module 		*owner;
 
-        /* used by the cpuidle framework to setup the broadcast timer */
+    /* used by the cpuidle framework to setup the broadcast timer，
+    */
+	/* 由cpuidle框架使用，以设置broadcast定时器 
+       用于指示在cpuidle driver注册和注销时，是否需要设置一个broadcast timer
+	*/
 	unsigned int            bctimer:1;
 	/* states array must be ordered in decreasing power consumption */
+	/* 该驱动支持的cpuidle状态，它以功耗从大到小的顺序排序 */
 	struct cpuidle_state	states[CPUIDLE_STATE_MAX];
+	/* 支持的状态数目 */
 	int			state_count;
+	/* 与coupled state有关 */
 	int			safe_state_index;
 
 	/* the driver handles the cpus in cpumask */
+	/* 该驱动支持的cpu掩码 */
 	struct cpumask		*cpumask;
 
 	/* preferred governor to switch at register time */
+	/* 注册时该驱动prefer的governor */
 	const char		*governor;
 };
 
@@ -255,11 +296,16 @@ static inline void cpuidle_poll_state_init(struct cpuidle_driver *drv) {}
  * CPUIDLE GOVERNOR INTERFACE *
  ******************************/
 
+/* cpuidle governor结构体 */
 struct cpuidle_governor {
+	/* governor名 */
 	char			name[CPUIDLE_NAME_LEN];
+	/* 将其加入全局链表的节点 */
 	struct list_head 	governor_list;
+	/* 该governor的评分 */
 	unsigned int		rating;
 
+	/* 操作回调 */
 	int  (*enable)		(struct cpuidle_driver *drv,
 					struct cpuidle_device *dev);
 	void (*disable)		(struct cpuidle_driver *drv,

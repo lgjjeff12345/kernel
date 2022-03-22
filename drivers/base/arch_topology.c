@@ -221,6 +221,7 @@ static void update_topology_flags_workfn(struct work_struct *work)
 static DEFINE_PER_CPU(u32, freq_factor) = 1;
 static u32 *raw_capacity;
 
+/* 释放raw_capacity内存 */
 static int free_raw_capacity(void)
 {
 	kfree(raw_capacity);
@@ -255,6 +256,7 @@ void topology_normalize_cpu_scale(void)
 	}
 }
 
+/* 解析cpu的capacity，它会被保存在raw_capacity变量中 */
 bool __init topology_parse_cpu_capacity(struct device_node *cpu_node, int cpu)
 {
 	struct clk *cpu_clk;
@@ -265,6 +267,7 @@ bool __init topology_parse_cpu_capacity(struct device_node *cpu_node, int cpu)
 	if (cap_parsing_failed)
 		return false;
 
+	/* 获取capacity-dmips-mhz属性 */
 	ret = of_property_read_u32(cpu_node, "capacity-dmips-mhz",
 				   &cpu_capacity);
 	if (!ret) {
@@ -287,6 +290,7 @@ bool __init topology_parse_cpu_capacity(struct device_node *cpu_node, int cpu)
 		 * frequency value now, assuming they are running at the same
 		 * frequency (by keeping the initial freq_factor value).
 		 */
+		/* 获取该cpu的时钟 */
 		cpu_clk = of_clk_get(cpu_node, 0);
 		if (!PTR_ERR_OR_ZERO(cpu_clk)) {
 			per_cpu(freq_factor, cpu) =
@@ -398,15 +402,18 @@ core_initcall(free_raw_capacity);
  * CPU nodes in DT. We need to just ignore this case.
  * (3) -1 if the node does not exist in the device tree
  */
+/* 从core节点或thread节点中，获取cpu信息 */
 static int __init get_cpu_for_node(struct device_node *node)
 {
 	struct device_node *cpu_node;
 	int cpu;
 
+	/* 获取cpu节点 */
 	cpu_node = of_parse_phandle(node, "cpu", 0);
 	if (!cpu_node)
 		return -1;
 
+	/* 从cpu节点中获取cpu的node id，并解析器capacity和频率信息 */
 	cpu = of_cpu_node_to_id(cpu_node);
 	if (cpu >= 0)
 		topology_parse_cpu_capacity(cpu_node, cpu);
@@ -418,6 +425,7 @@ static int __init get_cpu_for_node(struct device_node *node)
 	return cpu;
 }
 
+/* 解析core节点 */
 static int __init parse_core(struct device_node *core, int package_id,
 			     int core_id)
 {
@@ -427,7 +435,12 @@ static int __init parse_core(struct device_node *core, int package_id,
 	int cpu;
 	struct device_node *t;
 
+	/* 若core节点包含thread节点，则从thread节点中获取cpu实行，
+       并解析其capacity和频率信息。
+       否则，从core节点中获取cpu属性，并解析其capacity和频率信息
+	*/
 	do {
+		/* 在core节点下解析thread节点 */
 		snprintf(name, sizeof(name), "thread%d", i);
 		t = of_get_child_by_name(core, name);
 		if (t) {
@@ -447,6 +460,9 @@ static int __init parse_core(struct device_node *core, int package_id,
 		i++;
 	} while (t);
 
+	/* 不含有thread节点，从core节点中获取cpu属性，
+	   并解析其capacity和频率信息 
+	*/
 	cpu = get_cpu_for_node(core);
 	if (cpu >= 0) {
 		if (!leaf) {
@@ -455,6 +471,7 @@ static int __init parse_core(struct device_node *core, int package_id,
 			return -EINVAL;
 		}
 
+		/* 保存cpu拓扑信息 */
 		cpu_topology[cpu].package_id = package_id;
 		cpu_topology[cpu].core_id = core_id;
 	} else if (leaf && cpu != -ENODEV) {
@@ -465,6 +482,7 @@ static int __init parse_core(struct device_node *core, int package_id,
 	return 0;
 }
 
+/* 解析cluster */
 static int __init parse_cluster(struct device_node *cluster, int depth)
 {
 	char name[20];
@@ -482,10 +500,13 @@ static int __init parse_cluster(struct device_node *cluster, int depth)
 	 */
 	i = 0;
 	do {
+		/* 查找cluster0 / cluster1   ... */
 		snprintf(name, sizeof(name), "cluster%d", i);
+		/* 获取clusterx节点 */
 		c = of_get_child_by_name(cluster, name);
 		if (c) {
 			leaf = false;
+			/* cluster可以递归配置 */
 			ret = parse_cluster(c, depth + 1);
 			of_node_put(c);
 			if (ret != 0)
@@ -497,8 +518,10 @@ static int __init parse_cluster(struct device_node *cluster, int depth)
 	/* Now check for cores */
 	i = 0;
 	do {
+		/* 查找cluster的core */
 		snprintf(name, sizeof(name), "core%d", i);
 		c = of_get_child_by_name(cluster, name);
+		/* 若含有core节点 */
 		if (c) {
 			has_cores = true;
 
@@ -510,6 +533,7 @@ static int __init parse_cluster(struct device_node *cluster, int depth)
 			}
 
 			if (leaf) {
+				/* 解析core */
 				ret = parse_core(c, package_id, core_id++);
 			} else {
 				pr_err("%pOF: Non-leaf cluster with core %s\n",
@@ -533,12 +557,14 @@ static int __init parse_cluster(struct device_node *cluster, int depth)
 	return 0;
 }
 
+/* 解析cpu拓扑 */
 static int __init parse_dt_topology(void)
 {
 	struct device_node *cn, *map;
 	int ret = 0;
 	int cpu;
 
+	/* 查找/cpus节点 */
 	cn = of_find_node_by_path("/cpus");
 	if (!cn) {
 		pr_err("No CPU information found in DT\n");
@@ -549,10 +575,12 @@ static int __init parse_dt_topology(void)
 	 * When topology is provided cpu-map is essentially a root
 	 * cluster with restricted subnodes.
 	 */
+	/* 从cpus节点查找其子节点cpu-map */
 	map = of_get_child_by_name(cn, "cpu-map");
 	if (!map)
 		goto out;
 
+	/* 解析cluster */
 	ret = parse_cluster(map, 0);
 	if (ret != 0)
 		goto out_map;
@@ -626,6 +654,7 @@ void update_siblings_masks(unsigned int cpuid)
 	}
 }
 
+/* 只将该cpu自身设为其sibling */
 static void clear_cpu_topology(int cpu)
 {
 	struct cpu_topology *cpu_topo = &cpu_topology[cpu];
@@ -639,10 +668,12 @@ static void clear_cpu_topology(int cpu)
 	cpumask_set_cpu(cpu, &cpu_topo->thread_sibling);
 }
 
+/* reset cpu拓扑 */
 void __init reset_cpu_topology(void)
 {
 	unsigned int cpu;
 
+	/* 遍历所有的possible cpu */
 	for_each_possible_cpu(cpu) {
 		struct cpu_topology *cpu_topo = &cpu_topology[cpu];
 
@@ -655,6 +686,7 @@ void __init reset_cpu_topology(void)
 	}
 }
 
+/* 从cpu拓扑中删除该cpu */
 void remove_cpu_topology(unsigned int cpu)
 {
 	int sibling;
@@ -675,8 +707,10 @@ __weak int __init parse_acpi_topology(void)
 }
 
 #if defined(CONFIG_ARM64) || defined(CONFIG_RISCV)
+/* 初始化cpu拓扑 */
 void __init init_cpu_topology(void)
 {
+	/* reset cpu拓扑，只将其该cpu自身设置为其sibling */
 	reset_cpu_topology();
 
 	/*

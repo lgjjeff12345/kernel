@@ -37,7 +37,9 @@ struct device_node *of_root;
 EXPORT_SYMBOL(of_root);
 struct device_node *of_chosen;
 struct device_node *of_aliases;
+/* stdout节点 */
 struct device_node *of_stdout;
+/* stdout选项 */
 static const char *of_stdout_options;
 
 struct kset *of_kset;
@@ -55,6 +57,7 @@ DEFINE_MUTEX(of_mutex);
  */
 DEFINE_RAW_SPINLOCK(devtree_lock);
 
+/* full name的去除路径后的部分，与给定参数比较，若相同则匹配，否则不匹配 */
 bool of_node_name_eq(const struct device_node *np, const char *name)
 {
 	const char *node_name;
@@ -79,6 +82,7 @@ bool of_node_name_prefix(const struct device_node *np, const char *prefix)
 }
 EXPORT_SYMBOL(of_node_name_prefix);
 
+/* 判断给定节点的设备类型（device_type属性），是否与给定类型相同 */
 static bool __of_node_is_type(const struct device_node *np, const char *type)
 {
 	const char *match = __of_get_property(np, "device_type", NULL);
@@ -86,10 +90,12 @@ static bool __of_node_is_type(const struct device_node *np, const char *type)
 	return np && match && type && !strcmp(match, type);
 }
 
+/* 获取给定节点的address-cells属性 */
 int of_bus_n_addr_cells(struct device_node *np)
 {
 	u32 cells;
 
+	/* 若该节点未定义#address-cells，则复用其父节点的#address-cells */
 	for (; np; np = np->parent)
 		if (!of_property_read_u32(np, "#address-cells", &cells))
 			return cells;
@@ -98,6 +104,7 @@ int of_bus_n_addr_cells(struct device_node *np)
 	return OF_ROOT_NODE_ADDR_CELLS_DEFAULT;
 }
 
+/* 地址的cells属性 */
 int of_n_addr_cells(struct device_node *np)
 {
 	if (np->parent)
@@ -107,6 +114,7 @@ int of_n_addr_cells(struct device_node *np)
 }
 EXPORT_SYMBOL(of_n_addr_cells);
 
+/* 获取给定节点的size-cells属性 */
 int of_bus_n_size_cells(struct device_node *np)
 {
 	u32 cells;
@@ -138,16 +146,20 @@ int __weak of_node_to_nid(struct device_node *np)
 #define OF_PHANDLE_CACHE_BITS	7
 #define OF_PHANDLE_CACHE_SZ	BIT(OF_PHANDLE_CACHE_BITS)
 
+/* 该数组长度为128 */
 static struct device_node *phandle_cache[OF_PHANDLE_CACHE_SZ];
 
+/* 计算该handle对应的hash值 */
 static u32 of_phandle_cache_hash(phandle handle)
 {
+	/* 计算val的hash值，并取该hash值的高7bit */
 	return hash_32(handle, OF_PHANDLE_CACHE_BITS);
 }
 
 /*
  * Caller must hold devtree_lock.
  */
+/* 清除该handle对应的phandle_cache entry */
 void __of_phandle_cache_inv_entry(phandle handle)
 {
 	u32 handle_hash;
@@ -156,13 +168,16 @@ void __of_phandle_cache_inv_entry(phandle handle)
 	if (!handle)
 		return;
 
+	/* 计算该handle对应的hash值 */
 	handle_hash = of_phandle_cache_hash(handle);
 
+	/* 若匹配，则清除phandle_cache中与hash值对应的entry */
 	np = phandle_cache[handle_hash];
 	if (np && handle == np->phandle)
 		phandle_cache[handle_hash] = NULL;
 }
 
+/* of core初始化 */
 void __init of_core_init(void)
 {
 	struct device_node *np;
@@ -170,6 +185,7 @@ void __init of_core_init(void)
 
 	/* Create the kset, and register existing nodes */
 	mutex_lock(&of_mutex);
+	/* 在firmware目录下创建名为devicetree的kset */
 	of_kset = kset_create_and_add("devicetree", NULL, firmware_kobj);
 	if (!of_kset) {
 		mutex_unlock(&of_mutex);
@@ -188,6 +204,7 @@ void __init of_core_init(void)
 		proc_symlink("device-tree", NULL, "/sys/firmware/devicetree/base");
 }
 
+/* 节点的属性以单向链表形式组织 */
 static struct property *__of_find_property(const struct device_node *np,
 					   const char *name, int *lenp)
 {
@@ -196,6 +213,7 @@ static struct property *__of_find_property(const struct device_node *np,
 	if (!np)
 		return NULL;
 
+	/* 遍历该节点的属性，查找并返回与给定属性匹配的节点 */
 	for (pp = np->properties; pp; pp = pp->next) {
 		if (of_prop_cmp(pp->name, name) == 0) {
 			if (lenp)
@@ -207,6 +225,7 @@ static struct property *__of_find_property(const struct device_node *np,
 	return pp;
 }
 
+/* 查找指定节点的属性 */
 struct property *of_find_property(const struct device_node *np,
 				  const char *name,
 				  int *lenp)
@@ -222,6 +241,7 @@ struct property *of_find_property(const struct device_node *np,
 }
 EXPORT_SYMBOL(of_find_property);
 
+/* 遍历节点时，用于查找下一个节点 */
 struct device_node *__of_find_all_nodes(struct device_node *prev)
 {
 	struct device_node *np;
@@ -247,6 +267,7 @@ struct device_node *__of_find_all_nodes(struct device_node *prev)
  * Return: A node pointer with refcount incremented, use
  * of_node_put() on it when done.
  */
+/* 遍历节点时，用于查找下一个节点 */
 struct device_node *of_find_all_nodes(struct device_node *prev)
 {
 	struct device_node *np;
@@ -265,6 +286,7 @@ EXPORT_SYMBOL(of_find_all_nodes);
  * Find a property with a given name for a given node
  * and return the value.
  */
+/* 获取一个属性对应的值 */
 const void *__of_get_property(const struct device_node *np,
 			      const char *name, int *lenp)
 {
@@ -277,6 +299,7 @@ const void *__of_get_property(const struct device_node *np,
  * Find a property with a given name for a given node
  * and return the value.
  */
+/* 获取一个属性对应的值 */
 const void *of_get_property(const struct device_node *np, const char *name,
 			    int *lenp)
 {
@@ -300,6 +323,7 @@ EXPORT_SYMBOL(of_get_property);
  * Returns true if the physical identifier and the logical cpu index
  * correspond to the same core/thread, false otherwise.
  */
+/* 判断给定的逻辑cpu id是否与物理cpu id匹配 */
 bool __weak arch_match_cpu_phys_id(int cpu, u64 phys_id)
 {
 	return (u32)phys_id == cpu;
@@ -310,6 +334,9 @@ bool __weak arch_match_cpu_phys_id(int cpu, u64 phys_id)
  * core/thread corresponding to the logical cpu 'cpu'. If 'thread' is not
  * NULL, local thread number within the core is returned in it.
  */
+/* 检查给定prop_name属性是否保存与逻辑cpu号为cpu相关的core/thread物理id。
+   若thread为非空，将返回该core的local thread号
+*/
 static bool __of_find_n_match_cpu_property(struct device_node *cpun,
 			const char *prop_name, int cpu, unsigned int *thread)
 {
@@ -317,12 +344,21 @@ static bool __of_find_n_match_cpu_property(struct device_node *cpun,
 	int ac, prop_len, tid;
 	u64 hwid;
 
+	/* 获取cpu节点的addr cells */
 	ac = of_n_addr_cells(cpun);
+	/* 获取给定属性 */
 	cell = of_get_property(cpun, prop_name, &prop_len);
+	/* 若属性查找失败，且addr cells为0，则通过arch_match_cpu_phys_id判断
+       其是否与0号cpu匹配。若匹配则返回true
+	*/
 	if (!cell && !ac && arch_match_cpu_phys_id(cpu, 0))
 		return true;
+	/* 否则，若cell或ac不合法，则返回false
+	*/
 	if (!cell || !ac)
 		return false;
+	/* 按cell为单位处理，从cell中读取hwid，并判断其是否与逻辑cpu id匹配
+	*/
 	prop_len /= sizeof(*cell) * ac;
 	for (tid = 0; tid < prop_len; tid++) {
 		hwid = of_read_number(cell, ac);
@@ -342,6 +378,9 @@ static bool __of_find_n_match_cpu_property(struct device_node *cpun,
  * else false.  If 'thread' is non-NULL, the local thread number within the
  * core is returned in it.
  */
+/* 查看给定cpu的逻辑id是否与物理id匹配
+   其物理id为cpu节点中reg属性的值
+*/
 bool __weak arch_find_n_match_cpu_physical_id(struct device_node *cpun,
 					      int cpu, unsigned int *thread)
 {
@@ -355,6 +394,7 @@ bool __weak arch_find_n_match_cpu_physical_id(struct device_node *cpun,
 					   cpu, thread))
 		return true;
 
+	/* 查看给定cpu的逻辑id是否与物理id匹配 */
 	return __of_find_n_match_cpu_property(cpun, "reg", cpu, thread);
 }
 
@@ -377,6 +417,9 @@ bool __weak arch_find_n_match_cpu_physical_id(struct device_node *cpun,
  * Return: A node pointer for the logical cpu with refcount incremented, use
  * of_node_put() on it when done. Returns NULL if not found.
  */
+/* 根据cpu逻辑号获取与其相关的设备节点，thread参数用于返回
+   该物理cpu上的线程号
+*/
 struct device_node *of_get_cpu_node(int cpu, unsigned int *thread)
 {
 	struct device_node *cpun;
@@ -397,12 +440,16 @@ EXPORT_SYMBOL(of_get_cpu_node);
  * Return: The logical CPU number of the given CPU device_node or -ENODEV if the
  * CPU is not found.
  */
+/* 根据cpu node获取其逻辑id */
 int of_cpu_node_to_id(struct device_node *cpu_node)
 {
 	int cpu;
 	bool found = false;
 	struct device_node *np;
 
+	/* 遍历所有possible cpu，查找与给定节点匹配的设备节点，
+	   若查找成功，则返回其cpu的逻辑id
+	*/
 	for_each_possible_cpu(cpu) {
 		np = of_cpu_device_node_get(cpu);
 		found = (cpu_node == np);
@@ -430,12 +477,21 @@ EXPORT_SYMBOL(of_cpu_node_to_id);
  * Return: An idle state node if found at @index. The refcount is incremented
  * for it, so call of_node_put() on it when done. Returns NULL if not found.
  */
+/* 在给定index处解析cpu的idle state
+  （1）cpu_node：该cpu对应的设备节点
+  （2）idle state链表中的index
+  有两种通用的方式可用于描述cpu的idle状态：
+  （1）通过cpu-idle-states的描述
+  （2）通过层次化布局的power-domains和domain-idle-states
+  本函数会检查这两种方式，并未请求的index返回idle state节点
+*/
 struct device_node *of_get_cpu_state_node(struct device_node *cpu_node,
 					  int index)
 {
 	struct of_phandle_args args;
 	int err;
 
+	/* 获取其power-domains属性 */
 	err = of_parse_phandle_with_args(cpu_node, "power-domains",
 					"#power-domain-cells", 0, &args);
 	if (!err) {
@@ -481,6 +537,11 @@ EXPORT_SYMBOL(of_get_cpu_state_node);
  * 10. type
  * 11. name
  */
+/* 设备是否匹配
+   compat：compatible字符串
+   type：device_type值
+   name：节点名
+*/
 static int __of_device_is_compatible(const struct device_node *device,
 				     const char *compat, const char *type, const char *name)
 {
@@ -522,6 +583,7 @@ static int __of_device_is_compatible(const struct device_node *device,
 /** Checks if the given "compat" string matches one of the strings in
  * the device's "compatible" property
  */
+/* 设备是否compatible */
 int of_device_is_compatible(const struct device_node *device,
 		const char *compat)
 {
@@ -539,6 +601,7 @@ EXPORT_SYMBOL(of_device_is_compatible);
  *  a NULL terminated array of strings. Returns the best match
  *  score or 0.
  */
+/* 设备是否compatible */
 int of_device_compatible_match(struct device_node *device,
 			       const char *const *compat)
 {
@@ -564,6 +627,7 @@ int of_device_compatible_match(struct device_node *device,
  * Return: A positive integer if the root node has the given value in its
  * compatible property.
  */
+/* machine是否compatible */
 int of_machine_is_compatible(const char *compat)
 {
 	struct device_node *root;
@@ -586,6 +650,7 @@ EXPORT_SYMBOL(of_machine_is_compatible);
  *  Return: True if the status property is absent or set to "okay" or "ok",
  *  false otherwise
  */
+/* 检查一个设备是否可用 */
 static bool __of_device_is_available(const struct device_node *device)
 {
 	const char *status;
@@ -594,14 +659,17 @@ static bool __of_device_is_available(const struct device_node *device)
 	if (!device)
 		return false;
 
+	/* 获取其status属性，若未设置status属性，则该设备可用 */
 	status = __of_get_property(device, "status", &statlen);
 	if (status == NULL)
 		return true;
 
+	/* 若设置了okay或ok，则该设备可用 */
 	if (statlen > 0) {
 		if (!strcmp(status, "okay") || !strcmp(status, "ok"))
 			return true;
 	}
+	/* 其它状态都不可用 */
 
 	return false;
 }
@@ -614,6 +682,7 @@ static bool __of_device_is_available(const struct device_node *device)
  *  Return: True if the status property is absent or set to "okay" or "ok",
  *  false otherwise
  */
+/* 检查一个设备是否可用 */
 bool of_device_is_available(const struct device_node *device)
 {
 	unsigned long flags;
@@ -639,8 +708,14 @@ EXPORT_SYMBOL(of_device_is_available);
  *  Callers would nominally use ioread32be/iowrite32be if
  *  of_device_is_big_endian() == true, or readl/writel otherwise.
  */
+/* 判断一个设备的寄存器是大端还是小端 */
 bool of_device_is_big_endian(const struct device_node *device)
 {
+	/* 若该设备设置了big-endian属性，
+       或者使能了CONFIG_CPU_BIG_ENDIAN，且设备设置了native-endian属性，
+       则为大端。
+       否则，该设备为小端设备
+	*/
 	if (of_property_read_bool(device, "big-endian"))
 		return true;
 	if (IS_ENABLED(CONFIG_CPU_BIG_ENDIAN) &&
@@ -657,6 +732,7 @@ EXPORT_SYMBOL(of_device_is_big_endian);
  * Return: A node pointer with refcount incremented, use
  * of_node_put() on it when done.
  */
+/* 获取该设备的父设备 */
 struct device_node *of_get_parent(const struct device_node *node)
 {
 	struct device_node *np;
@@ -666,6 +742,7 @@ struct device_node *of_get_parent(const struct device_node *node)
 		return NULL;
 
 	raw_spin_lock_irqsave(&devtree_lock, flags);
+	/* 获取其父节点 */
 	np = of_node_get(node->parent);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 	return np;
@@ -699,6 +776,7 @@ struct device_node *of_get_next_parent(struct device_node *node)
 }
 EXPORT_SYMBOL(of_get_next_parent);
 
+/* 获取父节点当前子节点之后的一个子节点 */
 static struct device_node *__of_get_next_child(const struct device_node *node,
 						struct device_node *prev)
 {
@@ -707,6 +785,7 @@ static struct device_node *__of_get_next_child(const struct device_node *node,
 	if (!node)
 		return NULL;
 
+	/* 若prev存在，则返回prev节点的sibling。否则返回父节点的child节点 */
 	next = prev ? prev->sibling : node->child;
 	for (; next; next = next->sibling)
 		if (of_node_get(next))
@@ -727,6 +806,7 @@ static struct device_node *__of_get_next_child(const struct device_node *node,
  * it when done. Returns NULL when prev is the last child. Decrements the
  * refcount of prev.
  */
+/* 获取父节点当前子节点之后的一个子节点 */
 struct device_node *of_get_next_child(const struct device_node *node,
 	struct device_node *prev)
 {
@@ -748,6 +828,9 @@ EXPORT_SYMBOL(of_get_next_child);
  * This function is like of_get_next_child(), except that it
  * automatically skips any disabled nodes (i.e. status = "disabled").
  */
+/* 获取下一个可用的子节点
+   其与of_get_next_child类似，但会跳过disabled节点
+*/
 struct device_node *of_get_next_available_child(const struct device_node *node,
 	struct device_node *prev)
 {
@@ -757,6 +840,9 @@ struct device_node *of_get_next_available_child(const struct device_node *node,
 	if (!node)
 		return NULL;
 
+	/* 获取下一个子节点，若该节点不可用，则继续遍历，
+	   直到找到一个可用的节点为止 
+	*/
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 	next = prev ? prev->sibling : node->child;
 	for (; next; next = next->sibling) {
@@ -779,12 +865,14 @@ EXPORT_SYMBOL(of_get_next_available_child);
  * on it when done. Returns NULL when prev is the last child. Decrements
  * the refcount of prev.
  */
+/* 获取下一个cpu节点 */
 struct device_node *of_get_next_cpu_node(struct device_node *prev)
 {
 	struct device_node *next = NULL;
 	unsigned long flags;
 	struct device_node *node;
 
+	/* prev节点不存在，则 */
 	if (!prev)
 		node = of_find_node_by_path("/cpus");
 
@@ -844,11 +932,13 @@ EXPORT_SYMBOL(of_get_compatible_child);
  * of_node_put() on it when done.
  * Returns NULL if node is not found.
  */
+/* 为parent查找一个给定名字的child节点 */
 struct device_node *of_get_child_by_name(const struct device_node *node,
 				const char *name)
 {
 	struct device_node *child;
 
+	/* 遍历该节点的所有child，查找与给定名匹配的节点 */
 	for_each_child_of_node(node, child)
 		if (of_node_name_eq(child, name))
 			break;
@@ -874,6 +964,7 @@ struct device_node *__of_find_node_by_path(struct device_node *parent,
 	return NULL;
 }
 
+/* 通过全路径查找device node */
 struct device_node *__of_find_node_by_full_path(struct device_node *node,
 						const char *path)
 {
@@ -910,13 +1001,19 @@ struct device_node *__of_find_node_by_full_path(struct device_node *node,
  * Return: A node pointer with refcount incremented, use
  * of_node_put() on it when done.
  */
+ /* 通过full of路径查找设备节点
+    path：
+    opts：若路径后面带：，则：之后的部分为选项，其可通过opts指针返回
+ */
 struct device_node *of_find_node_opts_by_path(const char *path, const char **opts)
 {
 	struct device_node *np = NULL;
 	struct property *pp;
 	unsigned long flags;
+	/* 获取：指针 */
 	const char *separator = strchr(path, ':');
 
+	/* ：之后的部分作为选项返回 */
 	if (opts)
 		*opts = separator ? separator + 1 : NULL;
 
@@ -924,20 +1021,27 @@ struct device_node *of_find_node_opts_by_path(const char *path, const char **opt
 		return of_node_get(of_root);
 
 	/* The path could begin with an alias */
+	/* 若path不是以/开头，则其可以是alias */
 	if (*path != '/') {
 		int len;
 		const char *p = separator;
 
+		/* 若不存在分隔符：，则查找path中是否存在/ */
 		if (!p)
 			p = strchrnul(path, '/');
+		/* /之前的字符串长度 */
 		len = p - path;
 
 		/* of_aliases must not be NULL */
+		/* 若不在alias，直接返回 */
 		if (!of_aliases)
 			return NULL;
 
+		/* 获取aliases节点的所有属性 */
 		for_each_property_of_node(of_aliases, pp) {
+			/* 查找匹配的属性名 */
 			if (strlen(pp->name) == len && !strncmp(pp->name, path, len)) {
+				/* 通过属性的值获取该属性对应的node */
 				np = of_find_node_by_path(pp->value);
 				break;
 			}
@@ -951,6 +1055,7 @@ struct device_node *of_find_node_opts_by_path(const char *path, const char **opt
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 	if (!np)
 		np = of_node_get(of_root);
+	/* 通过全路径查找device node */
 	np = __of_find_node_by_full_path(np, path);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 	return np;
@@ -1193,6 +1298,7 @@ EXPORT_SYMBOL_GPL(of_modalias_node);
  * Return: A node pointer with refcount incremented, use
  * of_node_put() on it when done.
  */
+/* 通过phandle查找一个节点 */
 struct device_node *of_find_node_by_phandle(phandle handle)
 {
 	struct device_node *np = NULL;
@@ -1206,10 +1312,12 @@ struct device_node *of_find_node_by_phandle(phandle handle)
 
 	raw_spin_lock_irqsave(&devtree_lock, flags);
 
+	/* 从phanle cache中查找是否含有匹配的entry */
 	if (phandle_cache[handle_hash] &&
 	    handle == phandle_cache[handle_hash]->phandle)
 		np = phandle_cache[handle_hash];
 
+	/* phanle cache中未找到，遍历所有的节点，查找与该handle匹配的节点 */
 	if (!np) {
 		for_each_of_allnodes(np)
 			if (np->phandle == handle &&
@@ -1225,6 +1333,7 @@ struct device_node *of_find_node_by_phandle(phandle handle)
 }
 EXPORT_SYMBOL(of_find_node_by_phandle);
 
+/* 打印phandle的参数 */
 void of_print_phandle_args(const char *msg, const struct of_phandle_args *args)
 {
 	int i;
@@ -1237,6 +1346,7 @@ void of_print_phandle_args(const char *msg, const struct of_phandle_args *args)
 	pr_cont("\n");
 }
 
+/* phandle迭代初始化 */
 int of_phandle_iterator_init(struct of_phandle_iterator *it,
 		const struct device_node *np,
 		const char *list_name,
@@ -1255,6 +1365,7 @@ int of_phandle_iterator_init(struct of_phandle_iterator *it,
 	if (cell_count < 0 && !cells_name)
 		return -EINVAL;
 
+	/* 获取list name指定的属性 */
 	list = of_get_property(np, list_name, &size);
 	if (!list)
 		return -ENOENT;
@@ -1350,6 +1461,7 @@ err:
 }
 EXPORT_SYMBOL_GPL(of_phandle_iterator_next);
 
+/* 解析phandle的args */
 int of_phandle_iterator_args(struct of_phandle_iterator *it,
 			     uint32_t *args,
 			     int size)
@@ -1377,6 +1489,7 @@ static int __of_parse_phandle_with_args(const struct device_node *np,
 	int rc, cur_index = 0;
 
 	/* Loop over the phandles until all the requested entry is found */
+	/* 遍历所有的phandle */
 	of_for_each_phandle(&it, rc, np, list_name, cells_name, cell_count) {
 		/*
 		 * All of the error cases bail out of the loop, so at
@@ -1429,6 +1542,9 @@ static int __of_parse_phandle_with_args(const struct device_node *np,
  * Return: The device_node pointer with refcount incremented.  Use
  * of_node_put() on it when done.
  */
+/* 将一个phandle属性解析为一个device_node指针，由于一个np可能会包含
+   多个phandle，因此此处的index用于指定需要获取的phandle index
+*/
 struct device_node *of_parse_phandle(const struct device_node *np,
 				     const char *phandle_name, int index)
 {
@@ -1437,10 +1553,12 @@ struct device_node *of_parse_phandle(const struct device_node *np,
 	if (index < 0)
 		return NULL;
 
+	/* 解析出phandle参数 */
 	if (__of_parse_phandle_with_args(np, phandle_name, NULL, 0,
 					 index, &args))
 		return NULL;
 
+	/* 返回该phandle对应的设备节点 */
 	return args.np;
 }
 EXPORT_SYMBOL(of_parse_phandle);
@@ -1477,6 +1595,14 @@ EXPORT_SYMBOL(of_parse_phandle);
  * To get a device_node of the ``node2`` node you may call this:
  * of_parse_phandle_with_args(node3, "list", "#list-cells", 1, &args);
  */
+/* 查找一个由列表中phandle指定的节点
+   np：指向包含一个list的dt节点
+   list_name：包含list的属性名
+   cells_name：指定phandles参数数量的属性名
+   index：需要解析phandle的index
+   out_args：用于输出参数结构体的可选指针
+   该函数对于解析phandles列表机器参数非常有用
+*/
 int of_parse_phandle_with_args(const struct device_node *np, const char *list_name,
 				const char *cells_name, int index,
 				struct of_phandle_args *out_args)
@@ -1777,6 +1903,7 @@ EXPORT_SYMBOL(of_count_phandle_with_args);
  * @np:		Caller's Device Node
  * @prop:	Property to add
  */
+/* 将属性添加到node的链表中 */
 int __of_add_property(struct device_node *np, struct property *prop)
 {
 	struct property **next;
@@ -1800,6 +1927,7 @@ int __of_add_property(struct device_node *np, struct property *prop)
  * @np:		Caller's Device Node
  * @prop:	Property to add
  */
+/* 将属性添加到node的链表中 */
 int of_add_property(struct device_node *np, struct property *prop)
 {
 	unsigned long flags;
@@ -1822,6 +1950,7 @@ int of_add_property(struct device_node *np, struct property *prop)
 	return rc;
 }
 
+/* 从节点中删除一个属性，被删除的属性会被添加到deadprops链表中 */
 int __of_remove_property(struct device_node *np, struct property *prop)
 {
 	struct property **next;
@@ -1851,6 +1980,7 @@ int __of_remove_property(struct device_node *np, struct property *prop)
  * Instead we just move the property to the "dead properties"
  * list, so it won't be found any more.
  */
+/* 从节点删除一个属性 */
 int of_remove_property(struct device_node *np, struct property *prop)
 {
 	unsigned long flags;
@@ -1877,6 +2007,7 @@ int of_remove_property(struct device_node *np, struct property *prop)
 }
 EXPORT_SYMBOL_GPL(of_remove_property);
 
+/* 更新一个属性 */
 int __of_update_property(struct device_node *np, struct property *newprop,
 		struct property **oldpropp)
 {
@@ -1912,6 +2043,7 @@ int __of_update_property(struct device_node *np, struct property *newprop,
  * Instead we just move the property to the "dead properties" list,
  * and add the new property to the property list
  */
+/* 更新一个属性 */
 int of_update_property(struct device_node *np, struct property *newprop)
 {
 	struct property *oldprop;
@@ -1938,6 +2070,7 @@ int of_update_property(struct device_node *np, struct property *newprop)
 	return rc;
 }
 
+/* 将aliase属性加入aliases_lookup链表 */
 static void of_alias_add(struct alias_prop *ap, struct device_node *np,
 			 int id, const char *stem, int stem_len)
 {
@@ -1959,10 +2092,12 @@ static void of_alias_add(struct alias_prop *ap, struct device_node *np,
  * the global lookup table with the properties.  It returns the
  * number of alias properties found, or an error code in case of failure.
  */
+/* 扫描alias节点的所有属性 */
 void of_alias_scan(void * (*dt_alloc)(u64 size, u64 align))
 {
 	struct property *pp;
 
+	/* 或诶/aliases节点和chosen节点 */
 	of_aliases = of_find_node_by_path("/aliases");
 	of_chosen = of_find_node_by_path("/chosen");
 	if (of_chosen == NULL)
@@ -1984,6 +2119,7 @@ void of_alias_scan(void * (*dt_alloc)(u64 size, u64 align))
 	if (!of_aliases)
 		return;
 
+	/* 遍历aliases的所有属性 */
 	for_each_property_of_node(of_aliases, pp) {
 		const char *start = pp->name;
 		const char *end = start + strlen(start);
@@ -1992,11 +2128,13 @@ void of_alias_scan(void * (*dt_alloc)(u64 size, u64 align))
 		int id, len;
 
 		/* Skip those we do not want to proceed */
+		/* 若aliases属性名为name，phandle和linux,phandle则不处理 */
 		if (!strcmp(pp->name, "name") ||
 		    !strcmp(pp->name, "phandle") ||
 		    !strcmp(pp->name, "linux,phandle"))
 			continue;
 
+		/* 通过pp的value获取其node */
 		np = of_find_node_by_path(pp->value);
 		if (!np)
 			continue;
@@ -2007,6 +2145,9 @@ void of_alias_scan(void * (*dt_alloc)(u64 size, u64 align))
 			end--;
 		len = end - start;
 
+		/* alias的最后一个字符可作为其id
+           前面的字符串作为其stem
+		*/
 		if (kstrtoint(end, 10, &id) < 0)
 			continue;
 
@@ -2030,16 +2171,19 @@ void of_alias_scan(void * (*dt_alloc)(u64 size, u64 align))
  *
  * Return: The alias id if found.
  */
+/* 为给定device node获取alias id */
 int of_alias_get_id(struct device_node *np, const char *stem)
 {
 	struct alias_prop *app;
 	int id = -ENODEV;
 
 	mutex_lock(&of_mutex);
+	/* 遍历aliases链表，查找与给定stem相同的节点 */
 	list_for_each_entry(app, &aliases_lookup, link) {
 		if (strcmp(app->stem, stem) != 0)
 			continue;
 
+		/* 若它们的device node也相同，则返回其id */
 		if (np == app->np) {
 			id = app->id;
 			break;
@@ -2111,6 +2255,7 @@ EXPORT_SYMBOL_GPL(of_alias_get_alias_list);
  * The function travels the lookup table to get the highest alias id for the
  * given alias stem.  It returns the alias id if found.
  */
+/* 获取给定alias的最高id */
 int of_alias_get_highest_id(const char *stem)
 {
 	struct alias_prop *app;
@@ -2141,6 +2286,7 @@ EXPORT_SYMBOL_GPL(of_alias_get_highest_id);
  *
  * Return: TRUE if console successfully setup. Otherwise return FALSE.
  */
+/* 测试和设置console */
 bool of_console_check(struct device_node *dn, char *name, int index)
 {
 	if (!dn || dn != of_stdout || console_set_on_cmdline)
@@ -2150,6 +2296,7 @@ bool of_console_check(struct device_node *dn, char *name, int index)
 	 * XXX: cast `options' to char pointer to suppress complication
 	 * warnings: printk, UART and console drivers expect char pointer.
 	 */
+	/* 添加prefer console */
 	return !add_preferred_console(name, index, (char *)of_stdout_options);
 }
 EXPORT_SYMBOL_GPL(of_console_check);
@@ -2162,20 +2309,24 @@ EXPORT_SYMBOL_GPL(of_console_check);
  * of_node_put() on it when done.  Caller should hold a reference
  * to np.
  */
+/* 查找该节点的辅助cache */
 struct device_node *of_find_next_cache_node(const struct device_node *np)
 {
 	struct device_node *child, *cache_node;
 
+	/* 先查找l2-cache节点，若找不到，再查找next-level-cache节点 */
 	cache_node = of_parse_phandle(np, "l2-cache", 0);
 	if (!cache_node)
 		cache_node = of_parse_phandle(np, "next-level-cache", 0);
 
+	/* 若找到，则返回该节点 */
 	if (cache_node)
 		return cache_node;
 
 	/* OF on pmac has nodes instead of properties named "l2-cache"
 	 * beneath CPU nodes.
 	 */
+	/* PPC的情况 */
 	if (IS_ENABLED(CONFIG_PPC_PMAC) && of_node_is_type(np, "cpu"))
 		for_each_child_of_node(np, child)
 			if (of_node_is_type(child, "cache"))
@@ -2193,19 +2344,26 @@ struct device_node *of_find_next_cache_node(const struct device_node *np)
  * Return: The the level at which the last cache is present. It is exactly
  * same as  the total number of cache levels for the given logical cpu.
  */
+/* 查找给定cpu的最后一级cache level */
 int of_find_last_cache_level(unsigned int cpu)
 {
 	u32 cache_level = 0;
 	struct device_node *prev = NULL, *np = of_cpu_device_node_get(cpu);
 
+	/* 从cpu节点开始查找l2-cache和next-level-cache节点。若查找到，
+       则从该cache节点继续查找next-level-cache，直到找到最后一级
+       的cache节点
+	*/
 	while (np) {
 		prev = np;
 		of_node_put(np);
 		np = of_find_next_cache_node(np);
 	}
 
+	/* 从该节点读取cache_level属性 */
 	of_property_read_u32(prev, "cache-level", &cache_level);
 
+	/* 返回cache等级 */
 	return cache_level;
 }
 

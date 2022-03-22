@@ -215,6 +215,7 @@ static inline unsigned long kaslr_offset(void)
  * up with a tagged userland pointer. Clear the tag to get a sane pointer to
  * pass on to access_ok(), for instance.
  */
+/* 清除55 - 63位的数据，因为高8位可能为指针tag */
 #define __untagged_addr(addr)	\
 	((__force __typeof__(addr))sign_extend64((__force u64)(addr), 55))
 
@@ -234,6 +235,7 @@ static inline unsigned long kaslr_offset(void)
 #define __tag_get(addr)		0
 #endif /* CONFIG_KASAN_SW_TAGS || CONFIG_KASAN_HW_TAGS */
 
+/* 设置地址的tag */
 static inline const void *__tag_set(const void *addr, u8 tag)
 {
 	u64 __addr = (u64)addr & ~__tag_shifted(0xff);

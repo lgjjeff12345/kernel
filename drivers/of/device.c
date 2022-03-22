@@ -33,6 +33,7 @@ const struct of_device_id *of_match_device(const struct of_device_id *matches,
 }
 EXPORT_SYMBOL(of_match_device);
 
+/* of设备添加 */
 int of_device_add(struct platform_device *ofdev)
 {
 	BUG_ON(ofdev->dev.of_node == NULL);
@@ -291,6 +292,11 @@ void of_device_uevent(struct device *dev, struct kobj_uevent_env *env)
 	if ((!dev) || (!dev->of_node))
 		return;
 
+	/* 向环境变量中添加：
+	   F_NAME=%pOFn
+	   OF_FULLNAME=%pOF
+	   OF_TYPE=xxx
+	*/
 	add_uevent_var(env, "OF_NAME=%pOFn", dev->of_node);
 	add_uevent_var(env, "OF_FULLNAME=%pOF", dev->of_node);
 	type = of_node_get_device_type(dev->of_node);
@@ -300,6 +306,10 @@ void of_device_uevent(struct device *dev, struct kobj_uevent_env *env)
 	/* Since the compatible field can contain pretty much anything
 	 * it's not really legal to split it out with commas. We split it
 	 * up using a number of environment variables instead. */
+	/* 向环境变量中添加：
+	   OF_COMPATIBLE_%d=xxx
+	   OF_COMPATIBLE_N=xxx
+	*/
 	of_property_for_each_string(dev->of_node, "compatible", p, compat) {
 		add_uevent_var(env, "OF_COMPATIBLE_%d=%s", seen, compat);
 		seen++;
@@ -308,6 +318,9 @@ void of_device_uevent(struct device *dev, struct kobj_uevent_env *env)
 
 	seen = 0;
 	mutex_lock(&of_mutex);
+	/* 向环境变量中添加
+	   OF_ALIAS_%d=xxx
+	*/
 	list_for_each_entry(app, &aliases_lookup, link) {
 		if (dev->of_node == app->np) {
 			add_uevent_var(env, "OF_ALIAS_%d=%s", seen,

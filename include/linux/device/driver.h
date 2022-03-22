@@ -41,6 +41,12 @@
  * to speed up boot process while we are validating the rest of the
  * drivers.
  */
+/* 驱动的probe类型
+   PROBE_DEFAULT_STRATEGY：无论是同步还是异步probe，驱动都可以使用
+   PROBE_PREFER_ASYNCHRONOUS：“慢速”设备的驱动程序可能会选择异步执行其探测，
+   而探测顺序对于引导系统来说不是必需的。
+   PROBE_FORCE_SYNCHRONOUS：驱动必须在驱动和设备注册时同步probe
+*/
 enum probe_type {
 	PROBE_DEFAULT_STRATEGY,
 	PROBE_PREFER_ASYNCHRONOUS,
@@ -92,6 +98,29 @@ enum probe_type {
  * can export information and configuration variables that are independent
  * of any specific device.
  */
+/* 基本的设备驱动结构体。设备驱动模型会跟踪系统中所有已知的驱动，从而使得
+   driver core可以匹配新的设备。驱动能被系统感知，还可以用于很多其它的情形，
+   如设备驱动可以导出与特定设备独立的信息和配置变量。
+   name：驱动名
+   bus：该驱动所属的总线
+   owner：模块的属主
+   mod_name：用于内部模块
+   suppress_bind_attrs：通过sysfs关闭bind/unbind
+   probe_type：probe类型，同步或异步
+   of_match_table：匹配表
+   probe：调用该函数以查询已存在的设备，该驱动是否可用于对应设备，以及将驱动
+          与特定的设备绑定
+   sync_state：
+   remove：当一个设备被从系统中移除，以将其与驱动解除绑定
+   shutdown：shutdown时调用以关闭设备
+   suspend：将设备置于sleep模式，通常是一个低功耗状态
+   groups：driver core自动创建的默认属性
+   dev_groups：设备实例绑定到驱动程序后附加到该实例的其他属性
+   pm：与该驱动匹配设备的电源管理操作
+   coredump：当sysfs入口被写入时调用，设备驱动被期望调用dev_coredump API以
+   触发一个uevent
+   p：driver core的私有数据，只有driver core可以使用它
+*/
 struct device_driver {
 	const char		*name;
 	struct bus_type		*bus;

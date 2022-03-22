@@ -438,9 +438,11 @@ static int remove_nodes(struct device *dev,
 	 * devres_group colors.
 	 */
 	node = list_entry(first, struct devres_node, entry);
+	/* 遍历资源链表 */
 	list_for_each_entry_safe_from(node, n, end, entry) {
 		struct devres_group *grp;
 
+		/* 获取该节点对应的group */
 		grp = node_to_group(node);
 		if (grp) {
 			/* clear color of group markers in the first pass */
@@ -448,6 +450,7 @@ static int remove_nodes(struct device *dev,
 			nr_groups++;
 		} else {
 			/* regular devres entry */
+			/* 将链表节点移到todo链表 */
 			if (&node->entry == first)
 				first = first->next;
 			list_move_tail(&node->entry, todo);
@@ -488,6 +491,7 @@ static int remove_nodes(struct device *dev,
 	return cnt;
 }
 
+/* 释放todo链表中的所有资源 */
 static void release_nodes(struct device *dev, struct list_head *todo)
 {
 	struct devres *dr, *tmp;
@@ -509,6 +513,7 @@ static void release_nodes(struct device *dev, struct list_head *todo)
  * Release all resources associated with @dev.  This function is
  * called on driver detach.
  */
+/* 释放所有的设备资源 */
 int devres_release_all(struct device *dev)
 {
 	unsigned long flags;
@@ -520,6 +525,7 @@ int devres_release_all(struct device *dev)
 		return -ENODEV;
 
 	/* Nothing to release if list is empty */
+	/* 若不含有资源，则返回 */
 	if (list_empty(&dev->devres_head))
 		return 0;
 

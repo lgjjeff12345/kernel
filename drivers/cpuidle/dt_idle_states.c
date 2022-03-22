@@ -18,6 +18,7 @@
 
 #include "dt_idle_states.h"
 
+/* 初始化state node */
 static int init_state_node(struct cpuidle_state *idle_state,
 			   const struct of_device_id *match_id,
 			   struct device_node *state_node)
@@ -30,6 +31,7 @@ static int init_state_node(struct cpuidle_state *idle_state,
 	 * pointer of the passed in struct of_device_id array to the idle
 	 * state enter function.
 	 */
+	/* ??? */
 	idle_state->enter = match_id->data;
 	/*
 	 * Since this is not a "coupled" state, it's safe to assume interrupts
@@ -38,11 +40,15 @@ static int init_state_node(struct cpuidle_state *idle_state,
 	 */
 	idle_state->enter_s2idle = match_id->data;
 
+	/* 获取退出idle的延迟属性 */
 	err = of_property_read_u32(state_node, "wakeup-latency-us",
 				   &idle_state->exit_latency);
 	if (err) {
 		u32 entry_latency, exit_latency;
 
+		/* 获取wakeup-latency-us属性失败，则获取entry-latency-us和
+           exit-latency-us，并将它们之和作为idle退出延迟
+		*/
 		err = of_property_read_u32(state_node, "entry-latency-us",
 					   &entry_latency);
 		if (err) {
@@ -65,6 +71,7 @@ static int init_state_node(struct cpuidle_state *idle_state,
 		idle_state->exit_latency = entry_latency + exit_latency;
 	}
 
+	/* idle最小驻留时间 */
 	err = of_property_read_u32(state_node, "min-residency-us",
 				   &idle_state->target_residency);
 	if (err) {
@@ -73,11 +80,13 @@ static int init_state_node(struct cpuidle_state *idle_state,
 		return -EINVAL;
 	}
 
+	/* state的名字 */
 	err = of_property_read_string(state_node, "idle-state-name", &desc);
 	if (err)
 		desc = state_node->name;
 
 	idle_state->flags = 0;
+	/* 定时器是否需要停止 */
 	if (of_property_read_bool(state_node, "local-timer-stop"))
 		idle_state->flags |= CPUIDLE_FLAG_TIMER_STOP;
 	/*
@@ -146,6 +155,9 @@ static bool idle_state_valid(struct device_node *state_node, unsigned int idx,
  *
  * Return: number of valid DT idle states parsed, <0 on failure
  */
+/* 解析dt的idle状态，并初始化驱动的idle状态数组，
+   start_idx：第一个将要被初始化的状态index
+*/
 int dt_init_idle_driver(struct cpuidle_driver *drv,
 			const struct of_device_id *matches,
 			unsigned int start_idx)
@@ -166,9 +178,14 @@ int dt_init_idle_driver(struct cpuidle_driver *drv,
 	 * across CPUs, otherwise we hit a firmware misconfiguration.
 	 */
 	cpumask = drv->cpumask ? : cpu_possible_mask;
+	/* 获取cpumask中第一个cpu的device node节点 */
 	cpu_node = of_cpu_device_node_get(cpumask_first(cpumask));
 
 	for (i = 0; ; i++) {
+		/* 从cpu node中解析cpu状态节点，
+           phandle属性为power-domains / domain-idle-states，或者
+           cpu-idle-states
+		*/
 		state_node = of_get_cpu_state_node(cpu_node, i);
 		if (!state_node)
 			break;
@@ -196,7 +213,9 @@ int dt_init_idle_driver(struct cpuidle_driver *drv,
 			break;
 		}
 
+		/* 获取idle state数组成员 */
 		idle_state = &drv->states[state_idx++];
+		/* 初始该驱动的state节点 */
 		err = init_state_node(idle_state, match_id, state_node);
 		if (err) {
 			pr_err("Parsing idle state node %pOF failed with err %d\n",
@@ -215,6 +234,7 @@ int dt_init_idle_driver(struct cpuidle_driver *drv,
 	 * Update the driver state count only if some valid DT idle states
 	 * were detected
 	 */
+	/* 记录state计数值 */
 	if (i)
 		drv->state_count = state_idx;
 

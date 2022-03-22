@@ -40,34 +40,46 @@ enum cpufreq_table_sorting {
 	CPUFREQ_TABLE_SORTED_DESCENDING
 };
 
+/* cpu信息 */
 struct cpufreq_cpuinfo {
 	unsigned int		max_freq;
 	unsigned int		min_freq;
 
 	/* in 10^(-9) s = nanoseconds */
+	/* 转换延迟 */
 	unsigned int		transition_latency;
 };
 
+/* cpufreq policy定义 */
 struct cpufreq_policy {
 	/* CPUs sharing clock, require sw coordination */
+	/* 在线的cpu */
 	cpumask_var_t		cpus;	/* Online CPUs only */
+	/* 在线 + 离线的cpu */
 	cpumask_var_t		related_cpus; /* Online + Offline CPUs */
 	cpumask_var_t		real_cpus; /* Related and present */
 
 	unsigned int		shared_type; /* ACPI: ANY or ALL affected CPUs
 						should set cpufreq */
+	/* 管理该策略的cpu，该cpu必须在线 */
 	unsigned int		cpu;    /* cpu managing this policy, must be online */
 
+	/* 时钟 */
 	struct clk		*clk;
+	/* cpu信息 */
 	struct cpufreq_cpuinfo	cpuinfo;/* see above */
 
+	/* 最低/最高/当前频率 */
 	unsigned int		min;    /* in kHz */
 	unsigned int		max;    /* in kHz */
 	unsigned int		cur;    /* in kHz, only needed if cpufreq
 					 * governors are used */
+	/* suspend期间设置的freq */
 	unsigned int		suspend_freq; /* freq to set during suspend */
 
+	/* 策略 */
 	unsigned int		policy; /* see above */
+	/* unplug之前的策略 */
 	unsigned int		last_policy; /* policy before unplug */
 	struct cpufreq_governor	*governor; /* see below */
 	void			*governor_data;
@@ -77,10 +89,12 @@ struct cpufreq_policy {
 					 * called, but you're in IRQ context */
 
 	struct freq_constraints	constraints;
+	/* freq qos请求 */
 	struct freq_qos_request	*min_freq_req;
 	struct freq_qos_request	*max_freq_req;
 
 	struct cpufreq_frequency_table	*freq_table;
+	/* 频率表的排序方式 */
 	enum cpufreq_table_sorting freq_table_sorted;
 
 	struct list_head        policy_list;
@@ -553,6 +567,7 @@ static inline unsigned long cpufreq_scale(unsigned long old, u_int div,
  */
 #define LATENCY_MULTIPLIER		(1000)
 
+/* cpu freq governor定义 */
 struct cpufreq_governor {
 	char	name[CPUFREQ_NAME_LEN];
 	int	(*init)(struct cpufreq_policy *policy);
@@ -658,6 +673,7 @@ struct governor_attr {
 /* Special Values of .flags field */
 #define CPUFREQ_BOOST_FREQ	(1 << 0)
 
+/* 频率表 */
 struct cpufreq_frequency_table {
 	unsigned int	flags;
 	unsigned int	driver_data; /* driver specific data, not used by core */

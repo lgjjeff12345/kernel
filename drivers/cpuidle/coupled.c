@@ -84,6 +84,48 @@
  *    with interrupts still disabled.
  */
 
+/* 在一些arm smp SOC中，cpu不能独立地上下电，可能因为sequencing限制
+ （如tegra 2需要cpu 0最后下电），或者由于硬件bug（如omap4460，一个
+   cpu上电会破坏gic状态，除非其它cpu运行workaround）。每个cpu含有
+   一个不需要与其它cpu协调的power state（通常为WFI），以及一个或
+   多个会影响cpu之间共享模块（L2 cache，中断控制器，有时是整个soc）
+   的coupled power state。进入一个coupled power state，必须在相关
+   cpu上都被紧密控制。
+
+   本文件实现了一种解决方案，直到所有cpu准备好进入一个coupled状态之前，
+   所有cpu都在WFI状态等待。对于所有相关的cpu，coupled状态函数将在接近
+   相同的时间调用。
+
+   在所有cpu准备好进入idle时，它们将被ipi唤醒。此时，一个cpu将选择不
+   进入idle状态。只有所有cpu同时调用了power state enter函数，才能确保
+   其最终通过。在这个过程中，每个cpu将增加其ready计数器，直到该计数器
+   与所有online coupled cpu匹配。只要任意cpu退出idle，其它cpu将退出减少
+   其计数，且重试。
+
+   requested_state保存每个cpu已经ready的其最深coupled idle状态。
+   它假定状态从shallowest（最高耗能，最低延迟），到deepest（最低
+   耗能，最高延迟）indexed。
+   
+   有三个原子计数器被使用：
+   alive_count跟踪coupled组中当前或马上将online的cpu数量。
+   waiting_count跟踪在等待循环中，在ready循环中或在coupled idle状态的cpu数量。
+   ready_count跟踪在ready loop，或在coupled idle状态的cpu数量。
+
+   为了使用coupled cpuidle状态，一个cpuidle驱动必须：
+   设置cpuidle_device.coupled_cpus结构，以mask所有coupled cpus。若所有
+   cpu都是相同custer的一部分，它通常与cpu_possible_mask相同。coupled_cpus
+   mask必须在每个cpu的cpuidle_device结构体重设置。
+
+   对于不是coupled state的状态，设置cpuidle_device.safe_state结构，它通常用于
+   WFI。
+
+   在cpuidle_state.flags中为每个影响multiple cpu的状态设置CPUIDLE_FLAG_COUPLED。
+
+   为每个影响multiple cpu的状态提供一个cpuidle_state.enter函数。该函数确保在所
+   有cpu上几乎同时调用。驱动需要确保调用该函数时，只要一个cpu试图abort，则所有
+   相关的cpu都要abort。在中断依然被关闭时，该函数也应该返回
+*/
+
 /**
  * struct cpuidle_coupled - data for set of cpus that share a coupled idle state
  * @coupled_cpus: mask of cpus that are part of the coupled set
@@ -94,6 +136,15 @@
  * @refcnt: reference count of cpuidle devices that are using this struct
  * @prevent: flag to prevent coupled idle while a cpu is hotplugging
  */
+/* 共享一个coupled idle状态的cpu组的数据：
+   coupled_cpus：属于coupled组的cpu掩码
+   requested_state：保存每个cpu已经ready的其最深coupled idle状态
+   ready_waiting_counts：跟踪处在ready loop，或waiting loop状态的cpu数量
+   abort_barrier：abort case的同步点
+   online_count：online cpu的数量
+   refcnt：使用本结构体的cpuidle设备引用计数
+   prevent：当cpu正在hotplugging，该标志用于避免coupled idle
+*/
 struct cpuidle_coupled {
 	cpumask_t coupled_cpus;
 	int requested_state[NR_CPUS];
@@ -105,6 +156,7 @@ struct cpuidle_coupled {
 };
 
 #define WAITING_BITS 16
+/* 最大的等待cpu数量：256个 */
 #define MAX_WAITING_CPUS (1 << WAITING_BITS)
 #define WAITING_MASK (MAX_WAITING_CPUS - 1)
 #define READY_MASK (~WAITING_MASK)
@@ -172,6 +224,7 @@ void cpuidle_coupled_parallel_barrier(struct cpuidle_device *dev, atomic_t *a)
  *
  * Returns true if the target state is coupled with cpus besides this one
  */
+/* 检查该状态是否是coupled的 */
 bool cpuidle_state_is_coupled(struct cpuidle_driver *drv, int state)
 {
 	return drv->states[state].flags & CPUIDLE_FLAG_COUPLED;
@@ -467,6 +520,7 @@ static bool cpuidle_coupled_any_pokes_pending(struct cpuidle_coupled *coupled)
  * interrupts while preparing for idle, and it will always return with
  * interrupts enabled.
  */
+/* 进入coupled状态 */
 int cpuidle_enter_state_coupled(struct cpuidle_device *dev,
 		struct cpuidle_driver *drv, int next_state)
 {
@@ -639,6 +693,7 @@ static void cpuidle_coupled_update_online_cpus(struct cpuidle_coupled *coupled)
  * cpuidle_coupled struct for this set of coupled cpus, or creates one if none
  * exists yet.
  */
+/* 注册一个coupled cpuidle设备 */
 int cpuidle_coupled_register_device(struct cpuidle_device *dev)
 {
 	int cpu;
@@ -687,6 +742,7 @@ have_coupled:
  * cpu from the coupled idle set, and frees the cpuidle_coupled_info struct if
  * this was the last cpu in the set.
  */
+/* 注销一个coupled cpuidle设备 */
 void cpuidle_coupled_unregister_device(struct cpuidle_device *dev)
 {
 	struct cpuidle_coupled *coupled = dev->coupled;
@@ -740,6 +796,9 @@ static void cpuidle_coupled_allow_idle(struct cpuidle_coupled *coupled)
 	put_cpu();
 }
 
+/* CPUHP_CPUIDLE_COUPLED_PREPARE的teardown回调，
+   或者CPUHP_AP_ONLINE_DYN的startup回调
+*/
 static int coupled_cpu_online(unsigned int cpu)
 {
 	struct cpuidle_device *dev;
@@ -756,6 +815,9 @@ static int coupled_cpu_online(unsigned int cpu)
 	return 0;
 }
 
+/* CPUHP_CPUIDLE_COUPLED_PREPARE的startup回调
+   或者CPUHP_AP_ONLINE_DYN的teardown回调
+*/
 static int coupled_cpu_up_prepare(unsigned int cpu)
 {
 	struct cpuidle_device *dev;
@@ -770,16 +832,23 @@ static int coupled_cpu_up_prepare(unsigned int cpu)
 	return 0;
 }
 
+/* cpuidle coupled初始化函数 */
 static int __init cpuidle_coupled_init(void)
 {
 	int ret;
 
+	/* 设置cpu CPUHP_CPUIDLE_COUPLED_PREPARE状态对应的
+	   回调函数等信息。若其满足条件，调用其startup回调
+	*/
 	ret = cpuhp_setup_state_nocalls(CPUHP_CPUIDLE_COUPLED_PREPARE,
 					"cpuidle/coupled:prepare",
 					coupled_cpu_up_prepare,
 					coupled_cpu_online);
 	if (ret)
 		return ret;
+	/* 设置cpu CPUHP_AP_ONLINE_DYN状态对应的回调函数等
+	   信息。若其满足条件，调用其startup回调
+	*/
 	ret = cpuhp_setup_state_nocalls(CPUHP_AP_ONLINE_DYN,
 					"cpuidle/coupled:online",
 					coupled_cpu_online,

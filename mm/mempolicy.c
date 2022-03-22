@@ -52,6 +52,14 @@
  * For shmfs/tmpfs/hugetlbfs shared memory the policy is shared between
  * all users and remembered even when nobody has memory mapped.
  */
+/* 内核简单的NUMA内存策略
+   NUMA策略允许用户给出在哪个节点分配内存的信息，每个VMA和进程支持4种策略。
+   对于page fault，VMA策略的优先级高于进程策略。
+   interleave：在一组节点上分配交错的内存，如果失败，则使用normal fallback。
+   bind：只在一组给定的节点分配内存，且没有fallback
+   preferred：
+   default：
+*/
 
 /* Notebook:
    fix mmap readahead to honour policy and enable policy for any page cache

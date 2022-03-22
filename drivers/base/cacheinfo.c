@@ -26,12 +26,14 @@ static DEFINE_PER_CPU(struct cpu_cacheinfo, ci_cpu_cacheinfo);
 #define cache_leaves(cpu)	(ci_cacheinfo(cpu)->num_leaves)
 #define per_cpu_cacheinfo(cpu)	(ci_cacheinfo(cpu)->info_list)
 
+/* 获取cpu的cache信息 */
 struct cpu_cacheinfo *get_cpu_cacheinfo(unsigned int cpu)
 {
 	return ci_cacheinfo(cpu);
 }
 
 #ifdef CONFIG_OF
+/* 判断两个cache信息是否是共享的 */
 static inline bool cache_leaves_are_shared(struct cacheinfo *this_leaf,
 					   struct cacheinfo *sib_leaf)
 {
@@ -39,12 +41,14 @@ static inline bool cache_leaves_are_shared(struct cacheinfo *this_leaf,
 }
 
 /* OF properties to query for a given cache type */
+/* 为一个给定cache类型查询属性 */
 struct cache_type_info {
 	const char *size_prop;
 	const char *line_size_props[2];
 	const char *nr_sets_prop;
 };
 
+/* cache类型信息 */
 static const struct cache_type_info cache_type_info[] = {
 	{
 		.size_prop       = "cache-size",
@@ -64,6 +68,7 @@ static const struct cache_type_info cache_type_info[] = {
 	},
 };
 
+/* 获取cacheinfo的index */
 static inline int get_cacheinfo_idx(enum cache_type type)
 {
 	if (type == CACHE_TYPE_UNIFIED)
@@ -71,18 +76,26 @@ static inline int get_cacheinfo_idx(enum cache_type type)
 	return type;
 }
 
+/* 从devicetree中获取该节点对应类型的cache size */
 static void cache_size(struct cacheinfo *this_leaf, struct device_node *np)
 {
 	const char *propname;
 	int ct_idx;
 
+	/* 获取该cacheinfo在dt中的cache size属性名，其值可为：
+       cache-size
+       i-cache-size
+       d-cache-size
+	*/
 	ct_idx = get_cacheinfo_idx(this_leaf->type);
 	propname = cache_type_info[ct_idx].size_prop;
 
+	/* 从devicetree的节点中获取其size */
 	of_property_read_u32(np, propname, &this_leaf->size);
 }
 
 /* not cache_line_size() because that's a macro in include/linux/cache.h */
+/* 从dt中获取cache line size，并设置到cacheinfo leaf的coherency_line_size中 */
 static void cache_get_line_size(struct cacheinfo *this_leaf,
 				struct device_node *np)
 {
@@ -105,6 +118,7 @@ static void cache_get_line_size(struct cacheinfo *this_leaf,
 	}
 }
 
+/* 从dt中获取cache set属性，并设置到对应leaf的number_of_sets中 */
 static void cache_nr_sets(struct cacheinfo *this_leaf, struct device_node *np)
 {
 	const char *propname;
@@ -116,6 +130,7 @@ static void cache_nr_sets(struct cacheinfo *this_leaf, struct device_node *np)
 	of_property_read_u32(np, propname, &this_leaf->number_of_sets);
 }
 
+/* 计算并设置其associate成员 */
 static void cache_associativity(struct cacheinfo *this_leaf)
 {
 	unsigned int line_size = this_leaf->coherency_line_size;
@@ -136,6 +151,7 @@ static bool cache_node_is_unified(struct cacheinfo *this_leaf,
 	return of_property_read_bool(np, "cache-unified");
 }
 
+/* 根据dt的设置，获取并填充cache的属性 */
 static void cache_of_set_props(struct cacheinfo *this_leaf,
 			       struct device_node *np)
 {
@@ -162,21 +178,26 @@ static int cache_setup_of_node(unsigned int cpu)
 	unsigned int index = 0;
 
 	/* skip if fw_token is already populated */
+	/* fw_token已经被设置，直接返回 */
 	if (this_cpu_ci->info_list->fw_token) {
 		return 0;
 	}
 
+	/* 判断是否含有cpu对应的设备结构体 */
 	if (!cpu_dev) {
 		pr_err("No cpu device for CPU %d\n", cpu);
 		return -ENODEV;
 	}
+	/* 获取其device node */
 	np = cpu_dev->of_node;
 	if (!np) {
 		pr_err("Failed to find cpu%d device node\n", cpu);
 		return -ENOENT;
 	}
 
+	/* 遍历该cpu的cache leaves */
 	while (index < cache_leaves(cpu)) {
+		/* 获取该leaf的指针 */
 		this_leaf = this_cpu_ci->info_list + index;
 		if (this_leaf->level != 1)
 			np = of_find_next_cache_node(np);
@@ -184,6 +205,7 @@ static int cache_setup_of_node(unsigned int cpu)
 			np = of_node_get(np);/* cpu node itself */
 		if (!np)
 			break;
+		/* 设置该leaf的属性 */
 		cache_of_set_props(this_leaf, np);
 		this_leaf->fw_token = np;
 		index++;
@@ -215,6 +237,7 @@ int __weak cache_setup_acpi(unsigned int cpu)
 
 unsigned int coherency_max_size;
 
+/* 设置cache的共享cpu map */
 static int cache_shared_cpu_map_setup(unsigned int cpu)
 {
 	struct cpu_cacheinfo *this_cpu_ci = get_cpu_cacheinfo(cpu);
@@ -233,6 +256,7 @@ static int cache_shared_cpu_map_setup(unsigned int cpu)
 	if (ret)
 		return ret;
 
+	/* 设置cache的shared map信息 */
 	for (index = 0; index < cache_leaves(cpu); index++) {
 		unsigned int i;
 
@@ -261,6 +285,7 @@ static int cache_shared_cpu_map_setup(unsigned int cpu)
 	return 0;
 }
 
+/* 移除cpu的map信息 */
 static void cache_shared_cpu_map_remove(unsigned int cpu)
 {
 	struct cpu_cacheinfo *this_cpu_ci = get_cpu_cacheinfo(cpu);
@@ -288,6 +313,7 @@ static void cache_shared_cpu_map_remove(unsigned int cpu)
 	}
 }
 
+/* 释放cache的属性 */
 static void free_cache_attributes(unsigned int cpu)
 {
 	if (!per_cpu_cacheinfo(cpu))
@@ -309,13 +335,18 @@ int __weak populate_cache_leaves(unsigned int cpu)
 	return -ENOENT;
 }
 
+/* 探测该cpu的cache属性 */
 static int detect_cache_attributes(unsigned int cpu)
 {
 	int ret;
 
+	/* 初始化cpu的cache等级，arm64中通过读取clidr_el1寄存器
+	   和dt配置两种方式获取。
+	*/
 	if (init_cache_level(cpu) || !cache_leaves(cpu))
 		return -ENOENT;
 
+	/* 根据leaves的值，分配cacheinfo的info_list内存 */
 	per_cpu_cacheinfo(cpu) = kcalloc(cache_leaves(cpu),
 					 sizeof(struct cacheinfo), GFP_KERNEL);
 	if (per_cpu_cacheinfo(cpu) == NULL)
@@ -325,6 +356,7 @@ static int detect_cache_attributes(unsigned int cpu)
 	 * populate_cache_leaves() may completely setup the cache leaves and
 	 * shared_cpu_map or it may leave it partially setup.
 	 */
+	/* 设置每个cache leaves的type和level信息 */
 	ret = populate_cache_leaves(cpu);
 	if (ret)
 		goto free_ci;
@@ -644,6 +676,7 @@ err:
 	return rc;
 }
 
+/* cpu hotplug时调用 */
 static int cacheinfo_cpu_online(unsigned int cpu)
 {
 	int rc = detect_cache_attributes(cpu);
@@ -656,6 +689,7 @@ static int cacheinfo_cpu_online(unsigned int cpu)
 	return rc;
 }
 
+/* hotplug时调用 */
 static int cacheinfo_cpu_pre_down(unsigned int cpu)
 {
 	if (cpumask_test_and_clear_cpu(cpu, &cache_dev_map))
@@ -665,6 +699,7 @@ static int cacheinfo_cpu_pre_down(unsigned int cpu)
 	return 0;
 }
 
+/* 初始化cacheinfo的sysfs属性 */
 static int __init cacheinfo_sysfs_init(void)
 {
 	return cpuhp_setup_state(CPUHP_AP_BASE_CACHEINFO_ONLINE,

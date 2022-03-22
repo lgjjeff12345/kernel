@@ -28,6 +28,7 @@
 
 #define MEMORY_CLASS_NAME	"memory"
 
+/* online类型 */
 static const char *const online_type_to_str[] = {
 	[MMOP_OFFLINE] = "offline",
 	[MMOP_ONLINE] = "online",
@@ -50,16 +51,21 @@ int mhp_online_type_from_str(const char *str)
 
 static int sections_per_block;
 
+/* memblock id计算方式：
+   section_nr / sections_per_block
+*/
 static inline unsigned long memory_block_id(unsigned long section_nr)
 {
 	return section_nr / sections_per_block;
 }
 
+/* 将pfn转换为block id */
 static inline unsigned long pfn_to_block_id(unsigned long pfn)
 {
 	return memory_block_id(pfn_to_section_nr(pfn));
 }
 
+/* 将物理地址转换为block id */
 static inline unsigned long phys_to_block_id(unsigned long phys)
 {
 	return pfn_to_block_id(PFN_DOWN(phys));
@@ -84,25 +90,30 @@ static DEFINE_XARRAY(memory_blocks);
 
 static BLOCKING_NOTIFIER_HEAD(memory_chain);
 
+/* 注册memory通知 */
 int register_memory_notifier(struct notifier_block *nb)
 {
 	return blocking_notifier_chain_register(&memory_chain, nb);
 }
 EXPORT_SYMBOL(register_memory_notifier);
 
+/* 注销memory通知 */
 void unregister_memory_notifier(struct notifier_block *nb)
 {
 	blocking_notifier_chain_unregister(&memory_chain, nb);
 }
 EXPORT_SYMBOL(unregister_memory_notifier);
 
+/* memory block的释放函数 */
 static void memory_block_release(struct device *dev)
 {
 	struct memory_block *mem = to_memory_block(dev);
 
+	/* 释放结构体内存 */
 	kfree(mem);
 }
 
+/* 默认最小的memblock size为section size，即128M或512M */
 unsigned long __weak memory_block_size_bytes(void)
 {
 	return MIN_MEMORY_BLOCK_SIZE;
@@ -112,6 +123,7 @@ EXPORT_SYMBOL_GPL(memory_block_size_bytes);
 /*
  * Show the first physical section index (number) of this memory block.
  */
+/* 显示memory的物理index，即其block id */
 static ssize_t phys_index_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
@@ -127,6 +139,7 @@ static ssize_t phys_index_show(struct device *dev,
  * Legacy interface that we cannot remove. Always indicate "removable"
  * with CONFIG_MEMORY_HOTREMOVE - bad heuristic.
  */
+/* 这个接口不准确 */
 static ssize_t removable_show(struct device *dev, struct device_attribute *attr,
 			      char *buf)
 {
@@ -136,6 +149,7 @@ static ssize_t removable_show(struct device *dev, struct device_attribute *attr,
 /*
  * online, offline, going offline, etc.
  */
+/* 显示该内存节点的状态 */
 static ssize_t state_show(struct device *dev, struct device_attribute *attr,
 			  char *buf)
 {
@@ -164,6 +178,7 @@ static ssize_t state_show(struct device *dev, struct device_attribute *attr,
 	return sysfs_emit(buf, "%s\n", output);
 }
 
+/* 调用注册到memory通知链的通知 */
 int memory_notify(unsigned long val, void *v)
 {
 	return blocking_notifier_call_chain(&memory_chain, val, v);
@@ -246,6 +261,8 @@ static int memory_block_offline(struct memory_block *mem)
  * MEMORY_HOTPLUG depends on SPARSEMEM in mm/Kconfig, so it is
  * OK to have direct references to sparsemem variables in here.
  */
+/* memory hotplug依赖于SPARSEMEM。本接口用于触发内存的online和offline操作
+*/
 static int
 memory_block_action(struct memory_block *mem, unsigned long action)
 {
@@ -267,18 +284,23 @@ memory_block_action(struct memory_block *mem, unsigned long action)
 	return ret;
 }
 
+/* 改变该内存block的状态，online/offline */
 static int memory_block_change_state(struct memory_block *mem,
 		unsigned long to_state, unsigned long from_state_req)
 {
 	int ret = 0;
 
+	/* 改变前的状态检查 */
 	if (mem->state != from_state_req)
 		return -EINVAL;
 
+	/* 若需要将内存下线，则先将当前状态修改为MEM_GOING_OFFLINE */
 	if (to_state == MEM_OFFLINE)
 		mem->state = MEM_GOING_OFFLINE;
 
+	/* 调用内存上下线执行接口 */
 	ret = memory_block_action(mem, to_state);
+	/* 执行成功，状态修改为目的状态。否则，状态回滚为原先状态 */
 	mem->state = ret ? from_state_req : to_state;
 
 	return ret;
@@ -535,12 +557,14 @@ static ssize_t soft_offline_page_store(struct device *dev,
 }
 
 /* Forcibly offline a page, including killing processes. */
+/* 强制offline一个page，包含杀死进程 */
 static ssize_t hard_offline_page_store(struct device *dev,
 				       struct device_attribute *attr,
 				       const char *buf, size_t count)
 {
 	int ret;
 	u64 pfn;
+	/* 只有具有admin权限的用户才可以执行本操作 */
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 	if (kstrtoull(buf, 0, &pfn) < 0)
@@ -565,10 +589,12 @@ int __weak arch_get_memory_phys_device(unsigned long start_pfn)
  *
  * Called under device_hotplug_lock.
  */
+/* 根据block id查找内存block结构体 */
 static struct memory_block *find_memory_block_by_id(unsigned long block_id)
 {
 	struct memory_block *mem;
 
+	/* 获取给定block id的memory block结构体 */
 	mem = xa_load(&memory_blocks, block_id);
 	if (mem)
 		get_device(&mem->dev);
@@ -578,10 +604,12 @@ static struct memory_block *find_memory_block_by_id(unsigned long block_id)
 /*
  * Called under device_hotplug_lock.
  */
+/* 通过memory section获取其对应的memory block id */
 struct memory_block *find_memory_block(struct mem_section *section)
 {
 	unsigned long block_id = memory_block_id(__section_nr(section));
 
+	/* 根据block id查找内存block结构体 */
 	return find_memory_block_by_id(block_id);
 }
 
@@ -600,6 +628,7 @@ static const struct attribute_group memory_memblk_attr_group = {
 	.attrs = memory_memblk_attrs,
 };
 
+/* 内存block的sysfs属性 */
 static const struct attribute_group *memory_memblk_attr_groups[] = {
 	&memory_memblk_attr_group,
 	NULL,
@@ -608,22 +637,26 @@ static const struct attribute_group *memory_memblk_attr_groups[] = {
 /*
  * register_memory - Setup a sysfs device for a memory block
  */
+/* 注册一个memory block设备，并保存其memory_block指针 */
 static
 int register_memory(struct memory_block *memory)
 {
 	int ret;
 
+	/* 初始化状态为offline */
 	memory->dev.bus = &memory_subsys;
 	memory->dev.id = memory->start_section_nr / sections_per_block;
 	memory->dev.release = memory_block_release;
 	memory->dev.groups = memory_memblk_attr_groups;
 	memory->dev.offline = memory->state == MEM_OFFLINE;
 
+	/* 注册该设备 */
 	ret = device_register(&memory->dev);
 	if (ret) {
 		put_device(&memory->dev);
 		return ret;
 	}
+	/* 将memory结构体指针保存到memory_blocks的xarray中 */
 	ret = xa_err(xa_store(&memory_blocks, memory->dev.id, memory,
 			      GFP_KERNEL));
 	if (ret) {
@@ -633,36 +666,43 @@ int register_memory(struct memory_block *memory)
 	return ret;
 }
 
+/* 初始化内存block */
 static int init_memory_block(unsigned long block_id, unsigned long state,
 			     unsigned long nr_vmemmap_pages)
 {
 	struct memory_block *mem;
 	int ret = 0;
 
+	/* 获取该block id对应的memory_block结构体指针 */
 	mem = find_memory_block_by_id(block_id);
 	if (mem) {
 		put_device(&mem->dev);
 		return -EEXIST;
 	}
+	/* 分配memblock结构体内存 */
 	mem = kzalloc(sizeof(*mem), GFP_KERNEL);
 	if (!mem)
 		return -ENOMEM;
 
+	/* 设置memblock的参数 */
 	mem->start_section_nr = block_id * sections_per_block;
 	mem->state = state;
 	mem->nid = NUMA_NO_NODE;
 	mem->nr_vmemmap_pages = nr_vmemmap_pages;
 
+	/* 注册该memory block */
 	ret = register_memory(mem);
 
 	return ret;
 }
 
+/* 添加内存block */
 static int add_memory_block(unsigned long base_section_nr)
 {
 	int section_count = 0;
 	unsigned long nr;
 
+	/* 计算该block下present的内存section数量 */
 	for (nr = base_section_nr; nr < base_section_nr + sections_per_block;
 	     nr++)
 		if (present_section_nr(nr))
@@ -670,18 +710,22 @@ static int add_memory_block(unsigned long base_section_nr)
 
 	if (section_count == 0)
 		return 0;
+	/* 初始化内存block */
 	return init_memory_block(memory_block_id(base_section_nr),
 				 MEM_ONLINE, 0);
 }
 
+/* 注销内存 */
 static void unregister_memory(struct memory_block *memory)
 {
 	if (WARN_ON_ONCE(memory->dev.bus != &memory_subsys))
 		return;
 
+	/* 从memory_blocks中删除该memory对应的值 */
 	WARN_ON(xa_erase(&memory_blocks, memory->dev.id) == NULL);
 
 	/* drop the ref. we got via find_memory_block() */
+	/* 注销该memory block对应的设备 */
 	put_device(&memory->dev);
 	device_unregister(&memory->dev);
 }
@@ -693,24 +737,31 @@ static void unregister_memory(struct memory_block *memory)
  *
  * Called under device_hotplug_lock.
  */
+/* 为给定内存区域注册memory block设备，其start和size需要以memory block为
+   粒度对齐。memory block设备将会被初始化为offline
+*/
 int create_memory_block_devices(unsigned long start, unsigned long size,
 				unsigned long vmemmap_pages)
 {
+	/* 计算其起始和结束的block id */
 	const unsigned long start_block_id = pfn_to_block_id(PFN_DOWN(start));
 	unsigned long end_block_id = pfn_to_block_id(PFN_DOWN(start + size));
 	struct memory_block *mem;
 	unsigned long block_id;
 	int ret = 0;
 
+	/* 对齐检查 */
 	if (WARN_ON_ONCE(!IS_ALIGNED(start, memory_block_size_bytes()) ||
 			 !IS_ALIGNED(size, memory_block_size_bytes())))
 		return -EINVAL;
 
+	/* 遍历block id，并分别初始化它们 */
 	for (block_id = start_block_id; block_id != end_block_id; block_id++) {
 		ret = init_memory_block(block_id, MEM_OFFLINE, vmemmap_pages);
 		if (ret)
 			break;
 	}
+	/* 失败处理 */
 	if (ret) {
 		end_block_id = block_id;
 		for (block_id = start_block_id; block_id != end_block_id;
@@ -731,17 +782,21 @@ int create_memory_block_devices(unsigned long start, unsigned long size,
  *
  * Called under device_hotplug_lock.
  */
+/* 移除给定地址返回内的memory block设备 */
 void remove_memory_block_devices(unsigned long start, unsigned long size)
 {
+	/* 计算其起始和结束的block id */
 	const unsigned long start_block_id = pfn_to_block_id(PFN_DOWN(start));
 	const unsigned long end_block_id = pfn_to_block_id(PFN_DOWN(start + size));
 	struct memory_block *mem;
 	unsigned long block_id;
 
+	/* 对齐检查 */
 	if (WARN_ON_ONCE(!IS_ALIGNED(start, memory_block_size_bytes()) ||
 			 !IS_ALIGNED(size, memory_block_size_bytes())))
 		return;
 
+	/* 遍历block id，并分别初始化它们 */
 	for (block_id = start_block_id; block_id != end_block_id; block_id++) {
 		mem = find_memory_block_by_id(block_id);
 		if (WARN_ON_ONCE(!mem))
@@ -752,6 +807,7 @@ void remove_memory_block_devices(unsigned long start, unsigned long size)
 }
 
 /* return true if the memory block is offlined, otherwise, return false */
+/* 判断一个内存模块是否为offlined */
 bool is_memblock_offlined(struct memory_block *mem)
 {
 	return mem->state == MEM_OFFLINE;
@@ -792,11 +848,14 @@ void __init memory_dev_init(void)
 	unsigned long block_sz, nr;
 
 	/* Validate the configured memory block size */
+	/* 获取memblock size，它最小为section size */
 	block_sz = memory_block_size_bytes();
 	if (!is_power_of_2(block_sz) || block_sz < MIN_MEMORY_BLOCK_SIZE)
 		panic("Memory block size not suitable: 0x%lx\n", block_sz);
+	/* 每个block含有多少个section，默认为1个 */
 	sections_per_block = block_sz / MIN_MEMORY_BLOCK_SIZE;
 
+	/* memory节点的sysfs注册 */
 	ret = subsys_system_register(&memory_subsys, memory_root_attr_groups);
 	if (ret)
 		panic("%s() failed to register subsystem: %d\n", __func__, ret);
@@ -805,6 +864,7 @@ void __init memory_dev_init(void)
 	 * Create entries for memory sections that were found
 	 * during boot and have been initialized
 	 */
+	/* 遍历整个地址范围，并分别注册其memory block设备 */
 	for (nr = 0; nr <= __highest_present_section_nr;
 	     nr += sections_per_block) {
 		ret = add_memory_block(nr);
@@ -831,6 +891,7 @@ void __init memory_dev_init(void)
  *
  * Called under device_hotplug_lock.
  */
+/* 遍历内存范围中所有存在的内存blocks，并对每个block调用给定的回调函数 */
 int walk_memory_blocks(unsigned long start, unsigned long size,
 		       void *arg, walk_memory_blocks_func_t func)
 {
@@ -843,6 +904,7 @@ int walk_memory_blocks(unsigned long start, unsigned long size,
 	if (!size)
 		return 0;
 
+	/* 遍历给定内存范围内的block，并分别对其执行给定函数 */
 	for (block_id = start_block_id; block_id <= end_block_id; block_id++) {
 		mem = find_memory_block_by_id(block_id);
 		if (!mem)

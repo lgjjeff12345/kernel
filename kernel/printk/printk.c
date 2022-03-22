@@ -2873,6 +2873,7 @@ void register_console(struct console *newcon)
 	struct console *bcon = NULL;
 	int err;
 
+	printk("++++ register console: %s ++++\n", newcon->name);
 	for_each_console(bcon) {
 		if (WARN(bcon == newcon, "console '%s%d' already registered\n",
 					 bcon->name, bcon->index))

@@ -18,6 +18,9 @@
 #include <asm/tlbflush.h>
 #include "internal.h"
 
+/* 该模块被用于为用户空间处理page fault相关功能
+   链接： http://brieflyx.me/2020/linux-tools/userfaultfd-internals/
+*/
 static __always_inline
 struct vm_area_struct *find_dst_vma(struct mm_struct *dst_mm,
 				    unsigned long dst_start,

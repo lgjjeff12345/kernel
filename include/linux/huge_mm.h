@@ -254,6 +254,7 @@ static inline spinlock_t *pud_trans_huge_lock(pud_t *pud,
  * thp_head - Head page of a transparent huge page.
  * @page: Any page (tail, head or regular) found in the page cache.
  */
+/* 透明huge page的head page */
 static inline struct page *thp_head(struct page *page)
 {
 	return compound_head(page);
@@ -263,6 +264,7 @@ static inline struct page *thp_head(struct page *page)
  * thp_order - Order of a transparent huge page.
  * @page: Head page of a transparent huge page.
  */
+/* 透明huge page的order */
 static inline unsigned int thp_order(struct page *page)
 {
 	VM_BUG_ON_PGFLAGS(PageTail(page), page);
@@ -275,6 +277,7 @@ static inline unsigned int thp_order(struct page *page)
  * thp_nr_pages - The number of regular pages in this huge page.
  * @page: The head page of a huge page.
  */
+/* 透明huge page的page数量 */
 static inline int thp_nr_pages(struct page *page)
 {
 	VM_BUG_ON_PGFLAGS(PageTail(page), page);
@@ -490,6 +493,7 @@ static inline bool thp_migration_supported(void)
  *
  * Return: Number of bytes in this page.
  */
+/* 透明huge page的size */
 static inline unsigned long thp_size(struct page *page)
 {
 	return PAGE_SIZE << thp_order(page);

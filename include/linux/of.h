@@ -28,6 +28,7 @@
 typedef u32 phandle;
 typedef u32 ihandle;
 
+/* 属性定义 */
 struct property {
 	char	*name;
 	int	length;
@@ -48,16 +49,21 @@ struct property {
 struct of_irq_controller;
 #endif
 
+/* 设备节点 */
 struct device_node {
 	const char *name;
 	phandle phandle;
 	const char *full_name;
 	struct fwnode_handle fwnode;
 
+	/* 属性 */
 	struct	property *properties;
 	struct	property *deadprops;	/* removed properties */
+	/* 父节点 */
 	struct	device_node *parent;
+	/* 子节点 */
 	struct	device_node *child;
+	/* 兄弟节点 */
 	struct	device_node *sibling;
 #if defined(CONFIG_OF_KOBJ)
 	struct	kobject kobj;
@@ -71,15 +77,22 @@ struct device_node {
 };
 
 #define MAX_PHANDLE_ARGS 16
+/* phandle参数 */
 struct of_phandle_args {
+	/* 该phandle节点对应的设备节点 */
 	struct device_node *np;
+	/* 参数数量 */
 	int args_count;
+	/* 参数数组，最多可以有16个参数 */
 	uint32_t args[MAX_PHANDLE_ARGS];
 };
 
+/* phandle迭代结构体 */
 struct of_phandle_iterator {
 	/* Common iterator information */
+	/* cell的名字 */
 	const char *cells_name;
+	/* cell数量 */
 	int cell_count;
 	const struct device_node *parent;
 
@@ -94,9 +107,13 @@ struct of_phandle_iterator {
 	struct device_node *node;
 };
 
+/* of的reconfig数据 */
 struct of_reconfig_data {
+	/* 设备节点 */
 	struct device_node	*dn;
+	/* 属性 */
 	struct property		*prop;
+	/* old属性 */
 	struct property		*old_prop;
 };
 
@@ -152,6 +169,7 @@ extern raw_spinlock_t devtree_lock;
 #ifdef CONFIG_OF
 void of_core_init(void);
 
+/* 判断fwnode_handle是否为of_node */
 static inline bool is_of_node(const struct fwnode_handle *fwnode)
 {
 	return !IS_ERR_OR_NULL(fwnode) && fwnode->ops == &of_fwnode_ops;
@@ -277,6 +295,7 @@ extern struct device_node *of_find_matching_node_and_match(
 
 extern struct device_node *of_find_node_opts_by_path(const char *path,
 	const char **opts);
+/* 通过路径查找设备节点 */
 static inline struct device_node *of_find_node_by_path(const char *path)
 {
 	return of_find_node_opts_by_path(path, NULL);
@@ -1292,6 +1311,7 @@ static inline int of_property_read_s32(const struct device_node *np,
 	for (dn = of_find_matching_node_and_match(NULL, matches, match); \
 	     dn; dn = of_find_matching_node_and_match(dn, matches, match))
 
+/* 遍历所有的子节点 */
 #define for_each_child_of_node(parent, child) \
 	for (child = of_get_next_child(parent, NULL); child != NULL; \
 	     child = of_get_next_child(parent, child))

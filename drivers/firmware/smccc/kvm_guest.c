@@ -9,16 +9,20 @@
 
 #include <asm/hypervisor.h>
 
+/* kvm支持的feature位表 */
 static DECLARE_BITMAP(__kvm_arm_hyp_services, ARM_SMCCC_KVM_NUM_FUNCS) __ro_after_init = { };
 
+/* 初始化hyp服务 */
 void __init kvm_init_hyp_services(void)
 {
 	struct arm_smccc_res res;
 	u32 val[4];
 
+	/* 判断是否为hvc方式 */
 	if (arm_smccc_1_1_get_conduit() != SMCCC_CONDUIT_HVC)
 		return;
 
+	/* 获取kvm的uid */
 	arm_smccc_1_1_invoke(ARM_SMCCC_VENDOR_HYP_CALL_UID_FUNC_ID, &res);
 	if (res.a0 != ARM_SMCCC_VENDOR_HYP_UID_KVM_REG_0 ||
 	    res.a1 != ARM_SMCCC_VENDOR_HYP_UID_KVM_REG_1 ||
@@ -26,6 +30,7 @@ void __init kvm_init_hyp_services(void)
 	    res.a3 != ARM_SMCCC_VENDOR_HYP_UID_KVM_REG_3)
 		return;
 
+	/* 获取kvm的feature */
 	memset(&res, 0, sizeof(res));
 	arm_smccc_1_1_invoke(ARM_SMCCC_VENDOR_HYP_KVM_FEATURES_FUNC_ID, &res);
 
@@ -40,6 +45,7 @@ void __init kvm_init_hyp_services(void)
 		 res.a3, res.a2, res.a1, res.a0);
 }
 
+/* 根据kvm支持feature位表，判断给定func_id是否支持 */
 bool kvm_arm_hyp_service_available(u32 func_id)
 {
 	if (func_id >= ARM_SMCCC_KVM_NUM_FUNCS)

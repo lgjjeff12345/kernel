@@ -102,6 +102,16 @@ struct vm_area_struct;
  *
  * %__GFP_ACCOUNT causes the allocation to be accounted to kmemcg.
  */
+/* 页面可移动性和placement的标志
+   __GFP_MOVABLE：在内存compaction或回收时，这种页面可以被迁移到其它的位置
+   __GFP_RECLAIMABLE：用于指定了SLAB_RECLAIM_ACCOUNT的slab分配器，这种页面可以被
+   shrinkers释放
+   __GFP_WRITE：指示调用者会dirty这个页面。若可能，这些页面将分布到local zones中，
+   以避免所以dirty页面位于同一个zone（公平zone分配策略）
+   __GFP_HARDWALL：强制cpuset内存分配策略
+   __GFP_THISNODE：强制在请求的node分配内存，而不会使用fallbacks或placement策略
+   __GFP_ACCOUNT：分配内存时会考虑kmemcg
+*/
 #define __GFP_RECLAIMABLE ((__force gfp_t)___GFP_RECLAIMABLE)
 #define __GFP_WRITE	((__force gfp_t)___GFP_WRITE)
 #define __GFP_HARDWALL   ((__force gfp_t)___GFP_HARDWALL)
@@ -135,6 +145,15 @@ struct vm_area_struct;
  * %__GFP_NOMEMALLOC is used to explicitly forbid access to emergency reserves.
  * This takes precedence over the %__GFP_MEMALLOC flag if both are set.
  */
+/* watermark相关的标志
+   __GFP_ATOMIC：指示调用者不能通过回收内存或睡眠方式分配，且具有高的优先级。
+   用户通常为中断处理函数，它可能会与__GFP_HIGH共同使用
+   __GFP_HIGH：指示调用者具有高的优先级，在系统向前推进之前，该请求必须满足。
+   如创建一个IO上下文以清除页面
+   __GFP_MEMALLOC：允许访问所有内存。它被用于调用者能快速地向分配器释放更多
+   内存的场景，如进程正在退出或正在swapping。
+   __GFP_NOMEMALLOC：用于明确禁止使用emergency保留内存
+*/
 #define __GFP_ATOMIC	((__force gfp_t)___GFP_ATOMIC)
 #define __GFP_HIGH	((__force gfp_t)___GFP_HIGH)
 #define __GFP_MEMALLOC	((__force gfp_t)___GFP_MEMALLOC)
@@ -211,6 +230,10 @@ struct vm_area_struct;
  * loop around allocator.
  * Using this flag for costly allocations is _highly_ discouraged.
  */
+/* 回收标志（所有这些标志都被用于可以sleep的场景）
+   __GFP_IO：可以启动物理IO
+   __GFP_FS：可用于调用低级别的FS
+*/
 #define __GFP_IO	((__force gfp_t)___GFP_IO)
 #define __GFP_FS	((__force gfp_t)___GFP_FS)
 #define __GFP_DIRECT_RECLAIM	((__force gfp_t)___GFP_DIRECT_RECLAIM) /* Caller can reclaim */
@@ -239,6 +262,9 @@ struct vm_area_struct;
  * on deallocation. Typically used for userspace pages. Currently only has an
  * effect in HW tags mode.
  */
+/* action标志
+   
+*/
 #define __GFP_NOWARN	((__force gfp_t)___GFP_NOWARN)
 #define __GFP_COMP	((__force gfp_t)___GFP_COMP)
 #define __GFP_ZERO	((__force gfp_t)___GFP_ZERO)
@@ -320,6 +346,16 @@ struct vm_area_struct;
  * version does not attempt reclaim/compaction at all and is by default used
  * in page fault path, while the non-light is used by khugepaged.
  */
+/* GFP_ATOMIC:不能睡眠，且需保证成功。允许分配"atomic reserves"内存。
+   GFP_KERNEL：从ZONE_NORMAL或更低的zone中分配，可以直接reclaim
+   GFP_KERNEL_ACCOUNT：与GFP_KERNEL类似，但需要考虑kmemcg
+   GFP_NOWAIT：用于kernel分配，但不能使用直接的reclaim，使用物理IO或使用
+   文件系统回调
+   GFP_NOIO：使用直接回收，以丢弃不需要物理IO的clean pages或slab pages
+   GFP_NOFS：使用直接回收，但不能使用任何文件系统接口
+   GFP_USER：用户空间的分配
+   GFP_DMA：历史原因保留该标志，但需要避免使用该标志。
+*/
 #define GFP_ATOMIC	(__GFP_HIGH|__GFP_ATOMIC|__GFP_KSWAPD_RECLAIM)
 #define GFP_KERNEL	(__GFP_RECLAIM | __GFP_IO | __GFP_FS)
 #define GFP_KERNEL_ACCOUNT (GFP_KERNEL | __GFP_ACCOUNT)
@@ -355,6 +391,7 @@ static inline int gfp_migratetype(const gfp_t gfp_flags)
 #undef GFP_MOVABLE_MASK
 #undef GFP_MOVABLE_SHIFT
 
+/* 是否允许阻塞 */
 static inline bool gfpflags_allow_blocking(const gfp_t gfp_flags)
 {
 	return !!(gfp_flags & __GFP_DIRECT_RECLAIM);

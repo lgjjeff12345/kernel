@@ -141,6 +141,7 @@ EXPORT_SYMBOL(zalloc_cpumask_var_node);
  *
  * See alloc_cpumask_var_node.
  */
+/* 分配一个cpumask结构体的内存 */
 bool alloc_cpumask_var(cpumask_var_t *mask, gfp_t flags)
 {
 	return alloc_cpumask_var_node(mask, flags, NUMA_NO_NODE);
@@ -243,6 +244,7 @@ static DEFINE_PER_CPU(int, distribute_cpu_mask_prev);
  *
  * Returns >= nr_cpu_ids if the intersection is empty.
  */
+/* 从src1p和src2p与操作后的CPU集中，返回一个随机的cpu */
 int cpumask_any_and_distribute(const struct cpumask *src1p,
 			       const struct cpumask *src2p)
 {

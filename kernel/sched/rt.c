@@ -75,6 +75,7 @@ static void start_rt_bandwidth(struct rt_bandwidth *rt_b)
 	raw_spin_unlock(&rt_b->rt_runtime_lock);
 }
 
+/* 初始化rt rq */
 void init_rt_rq(struct rt_rq *rt_rq)
 {
 	struct rt_prio_array *array;
@@ -562,6 +563,7 @@ static void sched_rt_rq_dequeue(struct rt_rq *rt_rq)
 		dequeue_rt_entity(rt_se, 0);
 }
 
+/* rt队列是否已被throttled */
 static inline int rt_rq_throttled(struct rt_rq *rt_rq)
 {
 	return rt_rq->rt_throttled && !rt_rq->rt_nr_boosted;
@@ -935,15 +937,21 @@ static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun)
 	return idle;
 }
 
+/* 该调度实体的优先级 */
 static inline int rt_se_prio(struct sched_rt_entity *rt_se)
 {
 #ifdef CONFIG_RT_GROUP_SCHED
+	/* 获取其子rq */
 	struct rt_rq *rt_rq = group_rt_rq(rt_se);
 
+	/* 若存在子rq，则返回其子rq的当前最高优先级，
+	   因为rt调度类中，当前运行调度实体一定是最高优先级的，因此curr即为最高优先级
+	*/
 	if (rt_rq)
 		return rt_rq->highest_prio.curr;
 #endif
 
+	/* 返回该调度实体对应进程的动态优先级 */
 	return rt_task_of(rt_se)->prio;
 }
 
@@ -1075,6 +1083,7 @@ enqueue_top_rt_rq(struct rt_rq *rt_rq)
 
 #if defined CONFIG_SMP
 
+/* 设置对应cpu的最高优先级 */
 static void
 inc_rt_prio_smp(struct rt_rq *rt_rq, int prio, int prev_prio)
 {
@@ -1091,6 +1100,7 @@ inc_rt_prio_smp(struct rt_rq *rt_rq, int prio, int prev_prio)
 		cpupri_set(&rq->rd->cpupri, rq->cpu, prio);
 }
 
+/* 将低对应cpu的最高优先级 */
 static void
 dec_rt_prio_smp(struct rt_rq *rt_rq, int prio, int prev_prio)
 {
@@ -1117,17 +1127,21 @@ void dec_rt_prio_smp(struct rt_rq *rt_rq, int prio, int prev_prio) {}
 #endif /* CONFIG_SMP */
 
 #if defined CONFIG_SMP || defined CONFIG_RT_GROUP_SCHED
+/* 更新rq的最高优先级 */
 static void
 inc_rt_prio(struct rt_rq *rt_rq, int prio)
 {
 	int prev_prio = rt_rq->highest_prio.curr;
 
+	/* 若新优先级高于先前的最高优先级，则更新 */
 	if (prio < prev_prio)
 		rt_rq->highest_prio.curr = prio;
 
+	/* 设置对应cpu的最高优先级 */
 	inc_rt_prio_smp(rt_rq, prio, prev_prio);
 }
 
+/* 优先级降低时，更新rq和cpu的最高优先级 */
 static void
 dec_rt_prio(struct rt_rq *rt_rq, int prio)
 {
@@ -1227,6 +1241,7 @@ void inc_rt_tasks(struct sched_rt_entity *rt_se, struct rt_rq *rt_rq)
 	int prio = rt_se_prio(rt_se);
 
 	WARN_ON(!rt_prio(prio));
+	/* 增加调度队列的rt/rr运行进程数 */
 	rt_rq->rt_nr_running += rt_se_nr_running(rt_se);
 	rt_rq->rr_nr_running += rt_se_rr_nr_running(rt_se);
 
@@ -1261,21 +1276,30 @@ static inline bool move_entity(unsigned int flags)
 	return true;
 }
 
+/* 从rq的优先级队列中，删除该调度实体 */
 static void __delist_rt_entity(struct sched_rt_entity *rt_se, struct rt_prio_array *array)
 {
+	/* 从链表中删除节点 */
 	list_del_init(&rt_se->run_list);
 
+	/* 若链表为空，则清除该优先级对应的bitmap */
 	if (list_empty(array->queue + rt_se_prio(rt_se)))
 		__clear_bit(rt_se_prio(rt_se), array->bitmap);
 
+	/* 清除调度实体的on_list标志 */
 	rt_se->on_list = 0;
 }
 
 static void __enqueue_rt_entity(struct sched_rt_entity *rt_se, unsigned int flags)
 {
 	struct rt_rq *rt_rq = rt_rq_of_se(rt_se);
+	/* rt调度类的每个rq中，为每个优先级维护一条独立的链表。
+       且通过一个优先级bitmap加速查找有就绪进程的优先级
+	*/
 	struct rt_prio_array *array = &rt_rq->active;
+	/* 该调度实体含有的子runqueue */
 	struct rt_rq *group_rq = group_rt_rq(rt_se);
+	/* 获取该调度实体对应的优先级队列 */
 	struct list_head *queue = array->queue + rt_se_prio(rt_se);
 
 	/*
@@ -1284,24 +1308,31 @@ static void __enqueue_rt_entity(struct sched_rt_entity *rt_se, unsigned int flag
 	 * get throttled and the current group doesn't have any other
 	 * active members.
 	 */
+	/* 若其已被throttle，或者当前其子rq没有运行实体时，则不入队 */
 	if (group_rq && (rt_rq_throttled(group_rq) || !group_rq->rt_nr_running)) {
+		/* 若其已在运行队列上，则删除之 */
 		if (rt_se->on_list)
 			__delist_rt_entity(rt_se, array);
 		return;
 	}
 
+	/* 如果设置了DEQUEUE_SAVE，且未设置DEQUEUE_MOVE，则不执行入队操作 */
 	if (move_entity(flags)) {
 		WARN_ON_ONCE(rt_se->on_list);
+		/* 根据是否设置了ENQUEUE_HEAD标志，确定将该调度实体添加到链表头还是链表尾 */
 		if (flags & ENQUEUE_HEAD)
 			list_add(&rt_se->run_list, queue);
 		else
 			list_add_tail(&rt_se->run_list, queue);
 
+		/* 设置优先级bitmap，以及on_list标志 */
 		__set_bit(rt_se_prio(rt_se), array->bitmap);
 		rt_se->on_list = 1;
 	}
+	/* 调度实体已加入rq */
 	rt_se->on_rq = 1;
 
+	/* 若当前优先级比先前最高优先级高，则更新rq和cpu的最高优先级 */
 	inc_rt_tasks(rt_se, rt_rq);
 }
 
@@ -1311,11 +1342,14 @@ static void __dequeue_rt_entity(struct sched_rt_entity *rt_se, unsigned int flag
 	struct rt_prio_array *array = &rt_rq->active;
 
 	if (move_entity(flags)) {
+		/* 从链表中删除调度实体 */
 		WARN_ON_ONCE(!rt_se->on_list);
 		__delist_rt_entity(rt_se, array);
 	}
+	/* 清除on_rq标志 */
 	rt_se->on_rq = 0;
 
+	/* 若当前优先级为最高优先级，则降低rq和cpu的最高优先级 */
 	dec_rt_tasks(rt_se, rt_rq);
 }
 
@@ -1340,11 +1374,13 @@ static void dequeue_rt_stack(struct sched_rt_entity *rt_se, unsigned int flags)
 	}
 }
 
+/* 调度实体入队 */
 static void enqueue_rt_entity(struct sched_rt_entity *rt_se, unsigned int flags)
 {
 	struct rq *rq = rq_of_rt_se(rt_se);
 
 	dequeue_rt_stack(rt_se, flags);
+	/* 遍历其祖先调度实体，并执行实际的入队操作 */
 	for_each_sched_rt_entity(rt_se)
 		__enqueue_rt_entity(rt_se, flags);
 	enqueue_top_rt_rq(&rq->rt);
@@ -1373,9 +1409,11 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_rt_entity *rt_se = &p->rt;
 
+	/* 若为唤醒进程，则清除超时时间 */
 	if (flags & ENQUEUE_WAKEUP)
 		rt_se->timeout = 0;
 
+	/* 将调度实体入队 */
 	enqueue_rt_entity(rt_se, flags);
 
 	if (!task_current(rq, p) && p->nr_cpus_allowed > 1)
@@ -1429,6 +1467,7 @@ static void yield_task_rt(struct rq *rq)
 #ifdef CONFIG_SMP
 static int find_lowest_rq(struct task_struct *task);
 
+/* 选择task的rq */
 static int
 select_task_rq_rt(struct task_struct *p, int cpu, int flags)
 {
@@ -1698,6 +1737,7 @@ static struct task_struct *pick_highest_pushable_task(struct rq *rq, int cpu)
 
 static DEFINE_PER_CPU(cpumask_var_t, local_cpu_mask);
 
+/* 查找具有最低优先级的rq */
 static int find_lowest_rq(struct task_struct *task)
 {
 	struct sched_domain *sd;

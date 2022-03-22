@@ -447,6 +447,7 @@ static inline void enable_irq_lockdep_irqrestore(unsigned int irq, unsigned long
 /* IRQ wakeup (PM) control: */
 extern int irq_set_irq_wake(unsigned int irq, unsigned int on);
 
+/* 使能中断的唤醒功能 */
 static inline int enable_irq_wake(unsigned int irq)
 {
 	return irq_set_irq_wake(irq, 1);

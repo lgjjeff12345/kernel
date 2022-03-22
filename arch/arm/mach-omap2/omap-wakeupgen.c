@@ -78,6 +78,7 @@ static inline u32 wakeupgen_readl(u8 idx, u32 cpu)
 				(cpu * CPU_ENA_OFFSET) + (idx * 4));
 }
 
+/* 根据bank号，写对应寄存器的值 */
 static inline void wakeupgen_writel(u32 val, u8 idx, u32 cpu)
 {
 	writel_relaxed(val, wakeupgen_base + OMAP_WKG_ENB_A_0 +
@@ -415,6 +416,7 @@ static int omap_wakeupgen_cpu_dead(unsigned int cpu)
 	return 0;
 }
 
+/* irq hp初始化 */
 static void __init irq_hotplug_init(void)
 {
 	cpuhp_setup_state_nocalls(CPUHP_AP_ONLINE_DYN, "arm/omap-wake:online",
@@ -542,6 +544,7 @@ static const struct irq_domain_ops wakeupgen_domain_ops = {
 /*
  * Initialise the wakeupgen module.
  */
+/* 初始化唤醒产生模块 */
 static int __init wakeupgen_init(struct device_node *node,
 				 struct device_node *parent)
 {
@@ -555,6 +558,7 @@ static int __init wakeupgen_init(struct device_node *node,
 		return -ENODEV;
 	}
 
+	/* 获取parent domain */
 	parent_domain = irq_find_host(parent);
 	if (!parent_domain) {
 		pr_err("%pOF: unable to obtain parent domain\n", node);
@@ -567,11 +571,13 @@ static int __init wakeupgen_init(struct device_node *node,
 	}
 
 	/* Static mapping, never released */
+	/* 获取映射后的寄存器地址 */
 	wakeupgen_base = of_iomap(node, 0);
 	if (WARN_ON(!wakeupgen_base))
 		return -ENOMEM;
 
 	if (cpu_is_omap44xx()) {
+		/* 所有中断都可用于唤醒系统 */
 		irq_banks = OMAP4_NR_BANKS;
 		max_irqs = OMAP4_NR_IRQS;
 		omap_secure_apis = 1;
@@ -584,6 +590,7 @@ static int __init wakeupgen_init(struct device_node *node,
 		wakeupgen_ops = &am43xx_wakeupgen_ops;
 	}
 
+	/* 添加级联的irq chip */
 	domain = irq_domain_add_hierarchy(parent_domain, 0, max_irqs,
 					  node, &wakeupgen_domain_ops,
 					  NULL);
@@ -593,6 +600,7 @@ static int __init wakeupgen_init(struct device_node *node,
 	}
 
 	/* Clear all IRQ bitmasks at wakeupGen level */
+	/* 在wakeupGen级别清除所有的irq掩码 */
 	for (i = 0; i < irq_banks; i++) {
 		wakeupgen_writel(0, i, CPU0_ID);
 		if (!soc_is_am43xx())
@@ -605,6 +613,7 @@ static int __init wakeupgen_init(struct device_node *node,
 	 */
 
 	/* Associate all the IRQs to boot CPU like GIC init does. */
+	/* 将所有的中断与boot cpu关联， */
 	for (i = 0; i < max_irqs; i++)
 		irq_target_cpu[i] = boot_cpu;
 

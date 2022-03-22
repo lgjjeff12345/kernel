@@ -191,6 +191,7 @@ EXPORT_SYMBOL_GPL(kthread_freezable_should_stop);
  *
  * Returns NULL if the task is not a kthread.
  */
+/* 返回kthread创建时指定的函数 */
 void *kthread_func(struct task_struct *task)
 {
 	struct kthread *kthread = __to_kthread(task);
@@ -208,6 +209,7 @@ EXPORT_SYMBOL_GPL(kthread_func);
  * The caller is responsible for ensuring the validity of @task when
  * calling this function.
  */
+/* 返回kthread创建时指定的data值 */
 void *kthread_data(struct task_struct *task)
 {
 	return to_kthread(task)->data;
@@ -245,6 +247,7 @@ static void __kthread_parkme(struct kthread *self)
 		 * changin from TASK_PARKED and us failing the
 		 * wait_task_inactive() in kthread_park().
 		 */
+		/* 将线程状态设置TASK_PARKED */
 		set_special_state(TASK_PARKED);
 		if (!test_bit(KTHREAD_SHOULD_PARK, &self->flags))
 			break;
@@ -468,11 +471,14 @@ static void __kthread_bind_mask(struct task_struct *p, const struct cpumask *mas
 
 	/* It's safe because the task is inactive. */
 	raw_spin_lock_irqsave(&p->pi_lock, flags);
+	/* 设置该进程的允许运行cpu组 */
 	do_set_cpus_allowed(p, mask);
+	/* 不允许该进程设置affinity */
 	p->flags |= PF_NO_SETAFFINITY;
 	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
 }
 
+/* 绑定kthread到特定的cpu组上 */
 static void __kthread_bind(struct task_struct *p, unsigned int cpu, unsigned int state)
 {
 	__kthread_bind_mask(p, cpumask_of(cpu), state);
@@ -524,6 +530,7 @@ struct task_struct *kthread_create_on_cpu(int (*threadfn)(void *data),
 	return p;
 }
 
+/* 设置kthread的per cpu参数 */
 void kthread_set_per_cpu(struct task_struct *k, int cpu)
 {
 	struct kthread *kthread = to_kthread(k);
@@ -537,7 +544,9 @@ void kthread_set_per_cpu(struct task_struct *k, int cpu)
 		return;
 	}
 
+	/* 设置kthread绑定的cpu */
 	kthread->cpu = cpu;
+	/* 设置kthread的KTHREAD_IS_PER_CPU标志 */
 	set_bit(KTHREAD_IS_PER_CPU, &kthread->flags);
 }
 
@@ -589,28 +598,36 @@ EXPORT_SYMBOL_GPL(kthread_unpark);
  * Returns 0 if the thread is parked, -ENOSYS if the thread exited.
  * If called by the kthread itself just the park bit is set.
  */
+/* park一个线程 */
 int kthread_park(struct task_struct *k)
 {
 	struct kthread *kthread = to_kthread(k);
 
+	/* 线程正在退出 */
 	if (WARN_ON(k->flags & PF_EXITING))
 		return -ENOSYS;
 
+	/* 已设置KTHREAD_SHOULD_PARK标志，当前正在park或已park */
 	if (WARN_ON_ONCE(test_bit(KTHREAD_SHOULD_PARK, &kthread->flags)))
 		return -EBUSY;
 
+	/* 设置kthread的KTHREAD_SHOULD_PARK标志 */
 	set_bit(KTHREAD_SHOULD_PARK, &kthread->flags);
+	/* 当前线程不能park */
 	if (k != current) {
+		/* 唤醒线程 */
 		wake_up_process(k);
 		/*
 		 * Wait for __kthread_parkme() to complete(), this means we
 		 * _will_ have TASK_PARKED and are about to call schedule().
 		 */
+		/* 等待__kthread_parkme完成 */
 		wait_for_completion(&kthread->parked);
 		/*
 		 * Now wait for that schedule() to complete and the task to
 		 * get scheduled out.
 		 */
+		/* 等待schedule完成，且任务被调度出去 */
 		WARN_ON_ONCE(!wait_task_inactive(k, TASK_PARKED));
 	}
 
@@ -633,6 +650,7 @@ EXPORT_SYMBOL_GPL(kthread_park);
  * Returns the result of threadfn(), or %-EINTR if wake_up_process()
  * was never called.
  */
+/* stop一个kthread线程 */
 int kthread_stop(struct task_struct *k)
 {
 	struct kthread *kthread;
@@ -642,9 +660,13 @@ int kthread_stop(struct task_struct *k)
 
 	get_task_struct(k);
 	kthread = to_kthread(k);
+	/* 设置该kthread的KTHREAD_SHOULD_STOP标志 */
 	set_bit(KTHREAD_SHOULD_STOP, &kthread->flags);
+	/* 将该线程unpark */
 	kthread_unpark(k);
+	/* 唤醒线程 */
 	wake_up_process(k);
+	/* 等待其stop完成 */
 	wait_for_completion(&kthread->exited);
 	ret = k->exit_code;
 	put_task_struct(k);

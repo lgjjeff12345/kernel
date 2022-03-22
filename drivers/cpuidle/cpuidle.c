@@ -41,11 +41,13 @@ int cpuidle_disabled(void)
 {
 	return off;
 }
+/* 关闭cpuidle */
 void disable_cpuidle(void)
 {
 	off = 1;
 }
 
+/* cpuidle是否available */
 bool cpuidle_not_available(struct cpuidle_driver *drv,
 			   struct cpuidle_device *dev)
 {
@@ -74,6 +76,7 @@ int cpuidle_play_dead(void)
 	return -ENODEV;
 }
 
+/* 查找给定条件下最深的state */
 static int find_deepest_state(struct cpuidle_driver *drv,
 			      struct cpuidle_device *dev,
 			      u64 max_latency_ns,
@@ -197,12 +200,15 @@ int cpuidle_enter_s2idle(struct cpuidle_driver *drv, struct cpuidle_device *dev)
  * @drv: cpuidle driver for this cpu
  * @index: index into the states table in @drv of the state to enter
  */
+/* 进入idle状态，并更新统计信息 */
 int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 			int index)
 {
 	int entered_state;
 
+	/* 获取target状态 */
 	struct cpuidle_state *target_state = &drv->states[index];
+	/* 若停止timer，则需要broadcast定时器 */
 	bool broadcast = !!(target_state->flags & CPUIDLE_FLAG_TIMER_STOP);
 	ktime_t time_start, time_end;
 
@@ -211,6 +217,10 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 	 * local timer will be shut down.  If a local timer is used from another
 	 * CPU as a broadcast timer, this call may fail if it is not available.
 	 */
+	/* 若需要broadcast，则通知time框架切换到broadcast timer，因为
+       本地timer已经被关闭了。若一个其它cpu的local timer作为broadcast 
+       timer，且其不能获得，则本调用可能会失败
+	*/
 	if (broadcast && tick_broadcast_enter()) {
 		index = find_deepest_state(drv, dev, target_state->exit_latency_ns,
 					   CPUIDLE_FLAG_TIMER_STOP, false);
@@ -232,9 +242,12 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 	time_start = ns_to_ktime(local_clock());
 
 	stop_critical_timings();
+	/* rcu进入idle */
 	if (!(target_state->flags & CPUIDLE_FLAG_RCU_IDLE))
 		rcu_idle_enter();
+	/* 调用target的enter回调 */
 	entered_state = target_state->enter(dev, drv, index);
+	/* 从idle中返回 */
 	if (!(target_state->flags & CPUIDLE_FLAG_RCU_IDLE))
 		rcu_idle_exit();
 	start_critical_timings();
@@ -250,12 +263,14 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 		if (WARN_ON_ONCE(!irqs_disabled()))
 			local_irq_disable();
 
+		/* tick从broadcast中返回 */
 		tick_broadcast_exit();
 	}
 
 	if (!cpuidle_state_is_coupled(drv, index))
 		local_irq_enable();
 
+	/* 更新统计信息 */
 	if (entered_state >= 0) {
 		s64 diff, delay = drv->states[entered_state].exit_latency_ns;
 		int i;
@@ -316,6 +331,7 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
  * 'false' boolean value if the scheduler tick should not be stopped before
  * entering the returned state.
  */
+/* 选择cpudile状态 */
 int cpuidle_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 		   bool *stop_tick)
 {
@@ -332,6 +348,7 @@ int cpuidle_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
  * Returns the index in the idle state, < 0 in case of error.
  * The error code depends on the backend driver
  */
+/* 进入指定的idle状态 */
 int cpuidle_enter(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 		  int index)
 {
@@ -343,8 +360,9 @@ int cpuidle_enter(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 	 * useful for consumers outside cpuidle, we rely on that the governor's
 	 * ->select() callback have decided, whether to stop the tick or not.
 	 */
+	/* 获取其下一次超时的nohz 高精度定时器 */
 	WRITE_ONCE(dev->next_hrtimer, tick_nohz_get_next_hrtimer());
-
+	
 	if (cpuidle_state_is_coupled(drv, index))
 		ret = cpuidle_enter_state_coupled(dev, drv, index);
 	else
@@ -423,11 +441,14 @@ u64 cpuidle_poll_time(struct cpuidle_driver *drv,
 /**
  * cpuidle_install_idle_handler - installs the cpuidle idle loop handler
  */
+/* 安装cpuidle idle loop处理函数 */
 void cpuidle_install_idle_handler(void)
 {
+	/* 设备已使能 */
 	if (enabled_devices) {
 		/* Make sure all changes finished before we switch to new idle */
 		smp_wmb();
+		/* 设置initialized标志 */
 		initialized = 1;
 	}
 }
@@ -435,10 +456,14 @@ void cpuidle_install_idle_handler(void)
 /**
  * cpuidle_uninstall_idle_handler - uninstalls the cpuidle idle loop handler
  */
+/* 卸载cpuidle idle循环处理函数 */
 void cpuidle_uninstall_idle_handler(void)
 {
+	/* 设备已使能 */
 	if (enabled_devices) {
+		/* 清除initialized标志 */
 		initialized = 0;
+		/* 唤醒所有的idle cpu */
 		wake_up_all_idle_cpus();
 	}
 
@@ -494,11 +519,13 @@ void cpuidle_resume(void)
  * This function must be called between cpuidle_pause_and_lock and
  * cpuidle_resume_and_unlock when used externally.
  */
+/* 为一个cpu使能idle PM */
 int cpuidle_enable_device(struct cpuidle_device *dev)
 {
 	int ret;
 	struct cpuidle_driver *drv;
 
+	/* 设备存在，已使能，且当前governor已注册 */
 	if (!dev)
 		return -EINVAL;
 
@@ -508,6 +535,7 @@ int cpuidle_enable_device(struct cpuidle_device *dev)
 	if (!cpuidle_curr_governor)
 		return -EIO;
 
+	/* 获取其驱动 */
 	drv = cpuidle_get_cpu_driver(dev);
 
 	if (!drv)
@@ -516,10 +544,12 @@ int cpuidle_enable_device(struct cpuidle_device *dev)
 	if (!dev->registered)
 		return -EINVAL;
 
+	/* 添加该设备对应的sysfs */
 	ret = cpuidle_add_device_sysfs(dev);
 	if (ret)
 		return ret;
 
+	/* 调用cur governor的使能回调 */
 	if (cpuidle_curr_governor->enable) {
 		ret = cpuidle_curr_governor->enable(drv, dev);
 		if (ret)
@@ -548,6 +578,7 @@ EXPORT_SYMBOL_GPL(cpuidle_enable_device);
  * This function must be called between cpuidle_pause_and_lock and
  * cpuidle_resume_and_unlock when used externally.
  */
+/* 为一个cpu关闭idle电源管理 */
 void cpuidle_disable_device(struct cpuidle_device *dev)
 {
 	struct cpuidle_driver *drv = cpuidle_get_cpu_driver(dev);
@@ -558,11 +589,14 @@ void cpuidle_disable_device(struct cpuidle_device *dev)
 	if (!drv || !cpuidle_curr_governor)
 		return;
 
+	/* 清除设备使能标志 */
 	dev->enabled = 0;
 
+	/* 调用governor的disable回调 */
 	if (cpuidle_curr_governor->disable)
 		cpuidle_curr_governor->disable(drv, dev);
 
+	/* 减少enabled_devices的引用计数 */
 	cpuidle_remove_device_sysfs(dev);
 	enabled_devices--;
 }
@@ -594,6 +628,7 @@ static void __cpuidle_device_init(struct cpuidle_device *dev)
  *
  * cpuidle_lock mutex must be held before this is called
  */
+/* 注册cpuidle设备 */
 static int __cpuidle_register_device(struct cpuidle_device *dev)
 {
 	struct cpuidle_driver *drv = cpuidle_get_cpu_driver(dev);
@@ -602,6 +637,7 @@ static int __cpuidle_register_device(struct cpuidle_device *dev)
 	if (!try_module_get(drv->owner))
 		return -EINVAL;
 
+	/* cpuidle disable标志设置，可以由driver或user关闭 */
 	for (i = 0; i < drv->state_count; i++) {
 		if (drv->states[i].flags & CPUIDLE_FLAG_UNUSABLE)
 			dev->states_usage[i].disable |= CPUIDLE_STATE_DISABLED_BY_DRIVER;
@@ -610,9 +646,12 @@ static int __cpuidle_register_device(struct cpuidle_device *dev)
 			dev->states_usage[i].disable |= CPUIDLE_STATE_DISABLED_BY_USER;
 	}
 
+	/* 设置cpuidle_devices的值，它是percpu的 */
 	per_cpu(cpuidle_devices, dev->cpu) = dev;
+	/* 将cpuidle设备加入全局链表 */
 	list_add(&dev->device_list, &cpuidle_detected_devices);
 
+	/* 注册cpuidle设备 */
 	ret = cpuidle_coupled_register_device(dev);
 	if (ret)
 		__cpuidle_unregister_device(dev);
@@ -724,18 +763,21 @@ EXPORT_SYMBOL_GPL(cpuidle_unregister);
  *
  * Returns 0 on success, < 0 otherwise
  */
+/* 注册cpuidle驱动，它由平台的cpuidle驱动调用 */
 int cpuidle_register(struct cpuidle_driver *drv,
 		     const struct cpumask *const coupled_cpus)
 {
 	int ret, cpu;
 	struct cpuidle_device *device;
 
+	/* 注入cpuidle驱动 */
 	ret = cpuidle_register_driver(drv);
 	if (ret) {
 		pr_err("failed to register cpuidle driver\n");
 		return ret;
 	}
 
+	/* 遍历驱动支持的所有cpu，并注册cpuidle设备 */
 	for_each_cpu(cpu, drv->cpumask) {
 		device = &per_cpu(cpuidle_dev, cpu);
 		device->cpu = cpu;
@@ -749,6 +791,7 @@ int cpuidle_register(struct cpuidle_driver *drv,
 		if (coupled_cpus)
 			device->coupled_cpus = *coupled_cpus;
 #endif
+		/* 注册cpuidle设备 */
 		ret = cpuidle_register_device(device);
 		if (!ret)
 			continue;
@@ -766,11 +809,13 @@ EXPORT_SYMBOL_GPL(cpuidle_register);
 /**
  * cpuidle_init - core initializer
  */
+/* cpuidle初始化函数 */
 static int __init cpuidle_init(void)
 {
 	if (cpuidle_disabled())
 		return -ENODEV;
 
+	/* 在/sys/devices/system/cpu目录下创建cpuidle的sysfs文件 */
 	return cpuidle_add_interface(cpu_subsys.dev_root);
 }
 

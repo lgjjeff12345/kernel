@@ -1164,15 +1164,20 @@ EXPORT_SYMBOL_GPL(kick_all_cpus_sync);
  * including idle polling cpus, for non-idle cpus, we will do nothing
  * for them.
  */
+/* 唤醒所有的idle cpu */
 void wake_up_all_idle_cpus(void)
 {
 	int cpu;
 
+	/* 关抢占 */
 	preempt_disable();
+	/* 遍历所有的online cpu */
 	for_each_online_cpu(cpu) {
+		/* 不初始当前cpu */
 		if (cpu == smp_processor_id())
 			continue;
 
+		/* 若该cpu处于idle状态，则唤醒之 */
 		wake_up_if_idle(cpu);
 	}
 	preempt_enable();
@@ -1195,17 +1200,22 @@ struct smp_call_on_cpu_struct {
 	int			cpu;
 };
 
+/* 工作队列处理函数 */
 static void smp_call_on_cpu_callback(struct work_struct *work)
 {
 	struct smp_call_on_cpu_struct *sscs;
 
+	/* 获取sscs结构体 */
 	sscs = container_of(work, struct smp_call_on_cpu_struct, work);
+
 	if (sscs->cpu >= 0)
 		hypervisor_pin_vcpu(sscs->cpu);
+	/* 执行函数 */
 	sscs->ret = sscs->func(sscs->data);
 	if (sscs->cpu >= 0)
 		hypervisor_pin_vcpu(-1);
 
+	/* 唤醒完成量 */
 	complete(&sscs->done);
 }
 
@@ -1218,12 +1228,15 @@ int smp_call_on_cpu(unsigned int cpu, int (*func)(void *), void *par, bool phys)
 		.cpu  = phys ? cpu : -1,
 	};
 
+	/* 初始化工作队列 */
 	INIT_WORK_ONSTACK(&sscs.work, smp_call_on_cpu_callback);
 
 	if (cpu >= nr_cpu_ids || !cpu_online(cpu))
 		return -ENXIO;
 
+	/* 将其加入system_wq的工作队列 */
 	queue_work_on(cpu, system_wq, &sscs.work);
+	/* 等待处理完成 */
 	wait_for_completion(&sscs.done);
 
 	return sscs.ret;

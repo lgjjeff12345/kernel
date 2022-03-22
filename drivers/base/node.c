@@ -106,6 +106,7 @@ static const struct attribute_group *node_access_node_groups[] = {
 	NULL,
 };
 
+/* 移除node的访问者 */
 static void node_remove_accesses(struct node *node)
 {
 	struct node_access_nodes *c, *cnext;
@@ -289,12 +290,17 @@ put_device:
  * @nid: Node identifier that has new cache attributes
  * @cache_attrs: Attributes for the cache being added
  */
+/* 为一个内存节点添加cache属性
+   nid：含有新cache属性的node id
+   cache_attrs：将要被添加的cache属性
+*/
 void node_add_cache(unsigned int nid, struct node_cache_attrs *cache_attrs)
 {
 	struct node_cache_info *info;
 	struct device *dev;
 	struct node *node;
 
+	/* node id不处于online状态，或该node */
 	if (!node_online(nid) || !node_devices[nid])
 		return;
 
@@ -580,6 +586,7 @@ ATTRIBUTE_GROUPS(node_dev);
 static node_registration_func_t __hugetlb_register_node;
 static node_registration_func_t __hugetlb_unregister_node;
 
+/* 调用hugetlb注册接口 */
 static inline bool hugetlb_register_node(struct node *node)
 {
 	if (__hugetlb_register_node &&
@@ -590,12 +597,14 @@ static inline bool hugetlb_register_node(struct node *node)
 	return false;
 }
 
+/* 调用hugetlb注销接口 */
 static inline void hugetlb_unregister_node(struct node *node)
 {
 	if (__hugetlb_unregister_node)
 		__hugetlb_unregister_node(node);
 }
 
+/* 注册该节点的回调函数 */
 void register_hugetlbfs_with_node(node_registration_func_t doregister,
 				  node_registration_func_t unregister)
 {
@@ -660,8 +669,10 @@ static int register_node(struct node *node, int num)
  * Unregisters a node device @node.  All the devices on the node must be
  * unregistered before calling this function.
  */
+/* 注销一个node */
 void unregister_node(struct node *node)
 {
+	/* hugetlb注销一个node */
 	hugetlb_unregister_node(node);		/* no-op, if memoryless node */
 	node_remove_accesses(node);
 	node_remove_caches(node);
@@ -685,6 +696,7 @@ int register_cpu_under_node(unsigned int cpu, unsigned int nid)
 	if (!obj)
 		return 0;
 
+	/* 创建对应的sysfs文件 */
 	ret = sysfs_create_link(&node_devices[nid]->dev.kobj,
 				&obj->kobj,
 				kobject_name(&obj->kobj));
@@ -746,10 +758,12 @@ int register_memory_node_under_compute_node(unsigned int mem_nid,
 	return ret;
 }
 
+/* 将cpu从一个给定节点注销 */
 int unregister_cpu_under_node(unsigned int cpu, unsigned int nid)
 {
 	struct device *obj;
 
+	/* node不在线，直接返回 */
 	if (!node_online(nid))
 		return 0;
 
@@ -757,6 +771,7 @@ int unregister_cpu_under_node(unsigned int cpu, unsigned int nid)
 	if (!obj)
 		return 0;
 
+	/* 删除其对应的sysfs文件 */
 	sysfs_remove_link(&node_devices[nid]->dev.kobj,
 			  kobject_name(&obj->kobj));
 	sysfs_remove_link(&obj->kobj,
@@ -850,6 +865,7 @@ static int register_mem_block_under_node_early(struct memory_block *mem_blk,
  * During hotplug we know that all pages in the memory block belong to the same
  * node.
  */
+/* hotplug方式注册内存模块 */
 static int register_mem_block_under_node_hotplug(struct memory_block *mem_blk,
 						 void *arg)
 {
@@ -863,6 +879,9 @@ static int register_mem_block_under_node_hotplug(struct memory_block *mem_blk,
  * Unregister a memory block device under the node it spans. Memory blocks
  * with multiple nodes cannot be offlined and therefore also never be removed.
  */
+/* 注销一个其所跨越node下的memory block设备。
+   跨越多个numa node的memory blcok不能被offline，且不能被移除
+*/
 void unregister_memory_block_under_nodes(struct memory_block *mem_blk)
 {
 	if (mem_blk->nid == NUMA_NO_NODE)
@@ -874,11 +893,13 @@ void unregister_memory_block_under_nodes(struct memory_block *mem_blk)
 			  kobject_name(&node_devices[mem_blk->nid]->dev.kobj));
 }
 
+/* 链接内存section */
 void link_mem_sections(int nid, unsigned long start_pfn, unsigned long end_pfn,
 		       enum meminit_context context)
 {
 	walk_memory_blocks_func_t func;
 
+	/* 根基context的不同，选择不同的注册回调 */
 	if (context == MEMINIT_HOTPLUG)
 		func = register_mem_block_under_node_hotplug;
 	else
@@ -894,6 +915,7 @@ void link_mem_sections(int nid, unsigned long start_pfn, unsigned long end_pfn,
  * Handle per node hstate attribute [un]registration on transistions
  * to/from memoryless state.
  */
+/* 工作队列处理函数 */
 static void node_hugetlb_work(struct work_struct *work)
 {
 	struct node *node = container_of(work, struct node, node_work);
@@ -910,11 +932,13 @@ static void node_hugetlb_work(struct work_struct *work)
 		hugetlb_unregister_node(node);
 }
 
+/* 初始化node在内存热插拔时需要调用的工作队列 */
 static void init_node_hugetlb_work(int nid)
 {
 	INIT_WORK(&node_devices[nid]->node_work, node_hugetlb_work);
 }
 
+/* 内存热插拔时调用的node通知回调 */
 static int node_memory_callback(struct notifier_block *self,
 				unsigned long action, void *arg)
 {
@@ -928,6 +952,7 @@ static int node_memory_callback(struct notifier_block *self,
 		 * offload per node hstate [un]registration to a work thread
 		 * when transitioning to/from memoryless state.
 		 */
+		/* 执行node对应的工作队列 */
 		if (nid != NUMA_NO_NODE)
 			schedule_work(&node_devices[nid]->node_work);
 		break;
@@ -982,6 +1007,7 @@ int __register_one_node(int nid)
 	return error;
 }
 
+/* 注销一个node */
 void unregister_one_node(int nid)
 {
 	if (!node_devices[nid])
@@ -1000,6 +1026,7 @@ struct node_attr {
 	enum node_states state;
 };
 
+/* 显示node的state状态信息 */
 static ssize_t show_node_state(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
@@ -1048,6 +1075,7 @@ static const struct attribute_group *cpu_root_attr_groups[] = {
 };
 
 #define NODE_CALLBACK_PRI	2	/* lower than SLAB */
+/* 注册node类型 */
 static int __init register_node_type(void)
 {
 	int ret;
@@ -1055,12 +1083,14 @@ static int __init register_node_type(void)
  	BUILD_BUG_ON(ARRAY_SIZE(node_state_attr) != NR_NODE_STATES);
  	BUILD_BUG_ON(ARRAY_SIZE(node_state_attrs)-1 != NR_NODE_STATES);
 
+	/* 在sysfs中注册node总线 */
 	ret = subsys_system_register(&node_subsys, cpu_root_attr_groups);
 	if (!ret) {
 		static struct notifier_block node_memory_callback_nb = {
 			.notifier_call = node_memory_callback,
 			.priority = NODE_CALLBACK_PRI,
 		};
+		/* 在memory模块中注入node的通知函数，该函数在内存热插拔时会被调用 */
 		register_hotmemory_notifier(&node_memory_callback_nb);
 	}
 

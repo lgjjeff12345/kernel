@@ -64,13 +64,21 @@ static LIST_HEAD(async_global_pending);	/* pending from all registered doms */
 static ASYNC_DOMAIN(async_dfl_domain);
 static DEFINE_SPINLOCK(async_lock);
 
+/* async entry定义 */
 struct async_entry {
+	/* domain链表 */
 	struct list_head	domain_list;
+	/* 全局链表 */
 	struct list_head	global_list;
+	/* 该entry对应的work */
 	struct work_struct	work;
+	/* 异步cookie */
 	async_cookie_t		cookie;
+	/* async函数 */
 	async_func_t		func;
+	/* 数据 */
 	void			*data;
+	/* async domain */
 	struct async_domain	*domain;
 };
 
@@ -84,6 +92,7 @@ static long long microseconds_since(ktime_t start)
 	return ktime_to_ns(ktime_sub(now, start)) >> 10;
 }
 
+/* 返回pending链表第一个元素的cookie */
 static async_cookie_t lowest_in_progress(struct async_domain *domain)
 {
 	struct async_entry *first = NULL;
@@ -93,18 +102,22 @@ static async_cookie_t lowest_in_progress(struct async_domain *domain)
 	spin_lock_irqsave(&async_lock, flags);
 
 	if (domain) {
+		/* 若domain非空，遍历domain的pending链表 */
 		if (!list_empty(&domain->pending))
 			first = list_first_entry(&domain->pending,
 					struct async_entry, domain_list);
 	} else {
+		/* 若domain为空，遍历全局的pending链表async_global_pending */
 		if (!list_empty(&async_global_pending))
 			first = list_first_entry(&async_global_pending,
 					struct async_entry, global_list);
 	}
 
+	/* 若entry存在，则返回其cookie */
 	if (first)
 		ret = first->cookie;
 
+	/* 若链表遍历完成，则返回ASYNC_COOKIE_MAX */
 	spin_unlock_irqrestore(&async_lock, flags);
 	return ret;
 }
@@ -112,8 +125,10 @@ static async_cookie_t lowest_in_progress(struct async_domain *domain)
 /*
  * pick the first pending entry and run it
  */
+/* 获取第一个pending entry，并运行 */
 static void async_run_entry_fn(struct work_struct *work)
 {
+	/* 获取该work对应的async entry */
 	struct async_entry *entry =
 		container_of(work, struct async_entry, work);
 	unsigned long flags;
@@ -124,6 +139,7 @@ static void async_run_entry_fn(struct work_struct *work)
 		 entry->func, task_pid_nr(current));
 	calltime = ktime_get();
 
+	/* 调用该entry对应的函数 */
 	entry->func(entry->data, entry->cookie);
 
 	pr_debug("initcall %lli_%pS returned after %lld usecs\n",
@@ -132,6 +148,7 @@ static void async_run_entry_fn(struct work_struct *work)
 
 	/* 2) remove self from the pending queues */
 	spin_lock_irqsave(&async_lock, flags);
+	/* 将该entry从domain链表和全局链表中删除 */
 	list_del_init(&entry->domain_list);
 	list_del_init(&entry->global_list);
 
@@ -142,6 +159,7 @@ static void async_run_entry_fn(struct work_struct *work)
 	spin_unlock_irqrestore(&async_lock, flags);
 
 	/* 4) wake up any waiters */
+	/* 唤醒等待队列 */
 	wake_up(&async_done);
 }
 
@@ -239,6 +257,7 @@ EXPORT_SYMBOL_GPL(async_schedule_node);
  *
  * This function waits until all asynchronous function calls have been done.
  */
+/* 同步所有异步调用的calls，它会等待所有异步调用函数完成 */
 void async_synchronize_full(void)
 {
 	async_synchronize_full_domain(NULL);
@@ -252,6 +271,7 @@ EXPORT_SYMBOL_GPL(async_synchronize_full);
  * This function waits until all asynchronous function calls for the
  * synchronization domain specified by @domain have been done.
  */
+/* 同步所有异步调用的calls，它会等待所有异步调用函数完成 */
 void async_synchronize_full_domain(struct async_domain *domain)
 {
 	async_synchronize_cookie_domain(ASYNC_COOKIE_MAX, domain);
@@ -267,6 +287,7 @@ EXPORT_SYMBOL_GPL(async_synchronize_full_domain);
  * synchronization domain specified by @domain submitted prior to @cookie
  * have been done.
  */
+/* 同步一个特定domain所有异步调用的calls，它会等待所有异步调用函数完成 */
 void async_synchronize_cookie_domain(async_cookie_t cookie, struct async_domain *domain)
 {
 	ktime_t starttime;
@@ -274,6 +295,7 @@ void async_synchronize_cookie_domain(async_cookie_t cookie, struct async_domain 
 	pr_debug("async_waiting @ %i\n", task_pid_nr(current));
 	starttime = ktime_get();
 
+	/* 等待该domain的pending链表上所有的元素处理完成 */
 	wait_event(async_done, lowest_in_progress(domain) >= cookie);
 
 	pr_debug("async_continuing @ %i after %lli usec\n", task_pid_nr(current),
@@ -299,10 +321,13 @@ EXPORT_SYMBOL_GPL(async_synchronize_cookie);
  *
  * Returns %true if %current is an async worker task.
  */
+/* 当前worker是否为异步worker */
 bool current_is_async(void)
 {
+	/* 获取当前线程对应的worker */
 	struct worker *worker = current_wq_worker();
 
+	/* 若worker的current_func为async_run_entry_fn，则为异步worker */
 	return worker && worker->current_func == async_run_entry_fn;
 }
 EXPORT_SYMBOL_GPL(current_is_async);

@@ -51,6 +51,20 @@ struct fwnode_handle;
  * to work with devices based on what they do, rather than how they are
  * connected or how they work.
  */
+/* 设备class结构体
+   dev_uevent:当一个设备被从这个class中添加、删除，或者一些其它添加环境变量的
+   uevent产生时被调用
+   devnode：提供给devtmpfs的回调
+   class_release：调用以释放本class
+   dev_release：调用以释放device
+   shutdown_pre：在shut-down时，驱动shut-down之前调用
+   ns_type：sysfs用于确定名称空间的回调
+   namespace：该class含有设备的namespace
+   pm：该class默认的设备电源管理操作
+
+   calss是设备低级实现之上的高级抽象视角。如驱动视角有SCSI disk，ATA disk，
+   但在class level，它们都是disk。
+*/
 struct class {
 	const char		*name;
 	struct module		*owner;

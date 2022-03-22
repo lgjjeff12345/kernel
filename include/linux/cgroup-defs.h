@@ -622,6 +622,9 @@ struct cftype {
  * Control Group subsystem type.
  * See Documentation/admin-guide/cgroup-v1/cgroups.rst for details
  */
+/* cgroup子系统类型定义
+   
+*/
 struct cgroup_subsys {
 	struct cgroup_subsys_state *(*css_alloc)(struct cgroup_subsys_state *parent_css);
 	int (*css_online)(struct cgroup_subsys_state *css);

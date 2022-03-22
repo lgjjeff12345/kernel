@@ -204,6 +204,7 @@ static inline unsigned long global_node_page_state(enum node_stat_item item)
 	return global_node_page_state_pages(item);
 }
 
+/* 获取该zone给定状态的page数量 */
 static inline unsigned long zone_page_state(struct zone *zone,
 					enum zone_stat_item item)
 {

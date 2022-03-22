@@ -15,10 +15,15 @@
  * Returns true if the pending bit was set and the pending mask contains an
  * online CPU other than the dying CPU.
  */
+/* 从一个dying cpu上清除irq pending位
+   force_clear：若为true则会无条件清除move pending bit
+   若为false，则只有在dying cpu为pending mask中最后一个cpu时，才会清除该bit
+*/
 bool irq_fixup_move_pending(struct irq_desc *desc, bool force_clear)
 {
 	struct irq_data *data = irq_desc_get_irq_data(desc);
 
+	/* 未设置IRQD_SETAFFINITY_PENDING标志 */
 	if (!irqd_is_setaffinity_pending(data))
 		return false;
 
@@ -26,6 +31,7 @@ bool irq_fixup_move_pending(struct irq_desc *desc, bool force_clear)
 	 * The outgoing CPU might be the last online target in a pending
 	 * interrupt move. If that's the case clear the pending move bit.
 	 */
+	/* 清除IRQD_SETAFFINITY_PENDING标志 */
 	if (cpumask_any_and(desc->pending_mask, cpu_online_mask) >= nr_cpu_ids) {
 		irqd_clr_move_pending(data);
 		return false;

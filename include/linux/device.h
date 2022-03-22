@@ -84,6 +84,7 @@ int subsys_virtual_register(struct bus_type *subsys,
  * If "name" is specified, the uevent will contain it in
  * the DEVTYPE variable.
  */
+/* 设备类型 */
 struct device_type {
 	const char *name;
 	const struct attribute_group **groups;
@@ -276,13 +277,17 @@ void __percpu *__devm_alloc_percpu(struct device *dev, size_t size,
 				   size_t align);
 void devm_free_percpu(struct device *dev, void __percpu *pdata);
 
+/* 设备的dma参数 */
 struct device_dma_parameters {
 	/*
 	 * a low level driver may set these to teach IOMMU code about
 	 * sg limitations.
 	 */
+	/* 最大segment size */
 	unsigned int max_segment_size;
+	/* 最小align mask */
 	unsigned int min_align_mask;
+	/* segment边界mask */
 	unsigned long segment_boundary_mask;
 };
 
@@ -295,6 +300,14 @@ struct device_dma_parameters {
  * @DL_STATE_ACTIVE: Both the supplier and consumer drivers are present.
  * @DL_STATE_SUPPLIER_UNBIND: The supplier driver is unbinding.
  */
+/* 设备link状态
+   DL_STATE_NONE：驱动的presence不会被检查
+   DL_STATE_DORMANT：supplier/consumer驱动都不存在（DORMANT：休眠的）
+   DL_STATE_AVAILABLE：supplier驱动存在，但consumer不存在
+   DL_STATE_CONSUMER_PROBE：consumer正在probing（supplier驱动存在）
+   DL_STATE_ACTIVE：supplier和consumer驱动都存在
+   DL_STATE_SUPPLIER_UNBIND：supplier驱动正在unbinding
+*/
 enum device_link_state {
 	DL_STATE_NONE = -1,
 	DL_STATE_DORMANT = 0,
@@ -317,6 +330,17 @@ enum device_link_state {
  * SYNC_STATE_ONLY: Link only affects sync_state() behavior.
  * INFERRED: Inferred from data (eg: firmware) and not from driver actions.
  */
+/* 设备link标志
+   STATELESS：core不会自动移除该link
+   AUTOREMOVE_CONSUMER：在consumer驱动unbind时自动移除该link
+   PM_RUNTIME：若设置，runtime PM框架将使用该link
+   RPM_ACTIVE：在link创建时，在supplier上运行pm_runtime_get_sync
+   AUTOREMOVE_SUPPLIER：在supplier驱动unbind时自动移除该link
+   AUTOPROBE_CONSUMER：在supplier bind之后自动probe consumer驱动
+   MANAGED：core跟踪supplier/consumer驱动的presence
+   SYNC_STATE_ONLY：link只影响sync_state行为
+   INFERRED：来自数据的推断，而非来自驱动
+*/
 #define DL_FLAG_STATELESS		BIT(0)
 #define DL_FLAG_AUTOREMOVE_CONSUMER	BIT(1)
 #define DL_FLAG_PM_RUNTIME		BIT(2)
@@ -334,6 +358,12 @@ enum device_link_state {
  * @DL_DEV_DRIVER_BOUND: The driver has been bound to the device.
  * @DL_DEV_UNBINDING: The driver is unbinding from the device.
  */
+/* 设备驱动presence跟踪信息
+   DL_DEV_NO_DRIVER：没有驱动attach到该设备上
+   DL_DEV_PROBING：一个驱动正在probing
+   DL_DEV_DRIVER_BOUND：驱动已经被bound到设备
+   DL_DEV_UNBINDING：驱动正在从设备上unbounding
+*/
 enum dl_dev_state {
 	DL_DEV_NO_DRIVER = 0,
 	DL_DEV_PROBING,
@@ -350,6 +380,12 @@ enum dl_dev_state {
  * @DEVICE_FIXED: Device is not removable by the user.
  * @DEVICE_REMOVABLE: Device is removable by the user.
  */
+/* 设备是否可移除。设备是否可以被移除的标准由其子系统或总线决定
+   DEVICE_REMOVABLE_NOT_SUPPORTED：该设备部支持本属性，它是默认形式
+   DEVICE_REMOVABLE_UNKNOWN：设备位置未知
+   DEVICE_FIXED：设备不能被其用户移除
+   DEVICE_REMOVABLE：设备可以被其用户移除
+*/
 enum device_removable {
 	DEVICE_REMOVABLE_NOT_SUPPORTED = 0, /* must be 0 */
 	DEVICE_REMOVABLE_UNKNOWN,
@@ -364,10 +400,15 @@ enum device_removable {
  * @defer_sync: Hook to global list of devices that have deferred sync_state.
  * @status: Driver status information.
  */
+/* 与设备links相关的设备数据 */
 struct dev_links_info {
+	/* supplier设备的links链表 */
 	struct list_head suppliers;
+	/* consumer设备的links链表 */
 	struct list_head consumers;
+	/* 含有deferred sync_state的设备全局链表hook */
 	struct list_head defer_sync;
+	/* 驱动状态信息 */
 	enum dl_dev_state status;
 };
 
@@ -472,12 +513,15 @@ struct device {
 	struct kobject kobj;
 	struct device		*parent;
 
+	/* 设备的私有数据 */
 	struct device_private	*p;
 
+	/* 该设备的初始化名 */
 	const char		*init_name; /* initial name of the device */
 	const struct device_type *type;
 
 	struct bus_type	*bus;		/* type of bus device is on */
+	/* 该设备绑定的驱动 */
 	struct device_driver *driver;	/* which driver has allocated this
 					   device */
 	void		*platform_data;	/* Platform specific data, device
@@ -492,10 +536,13 @@ struct device {
 					 */
 
 	struct dev_links_info	links;
+	/* 设备电源管理信息 */
 	struct dev_pm_info	power;
+	/* 该设备对应的pm domain，它包含pm相关的回调函数 */
 	struct dev_pm_domain	*pm_domain;
 
 #ifdef CONFIG_ENERGY_MODEL
+	/* 该设备的perf domain */
 	struct em_perf_domain	*em_pd;
 #endif
 
@@ -503,14 +550,17 @@ struct device {
 	struct irq_domain	*msi_domain;
 #endif
 #ifdef CONFIG_PINCTRL
+	/* 设备对应的pin信息 */
 	struct dev_pin_info	*pins;
 #endif
 #ifdef CONFIG_GENERIC_MSI_IRQ
 	struct list_head	msi_list;
 #endif
 #ifdef CONFIG_DMA_OPS
+	/* 该设备对应的dma map回调函数 */
 	const struct dma_map_ops *dma_ops;
 #endif
+	/* dma mask */
 	u64		*dma_mask;	/* dma mask (if dma'able device) */
 	u64		coherent_dma_mask;/* Like dma_mask, but for
 					     alloc_coherent mappings as
@@ -522,6 +572,7 @@ struct device {
 
 	struct device_dma_parameters *dma_parms;
 
+	/* dma pool链表 */
 	struct list_head	dma_pools;	/* dma pools (if dma'ble) */
 
 #ifdef CONFIG_DMA_DECLARE_COHERENT
@@ -535,7 +586,9 @@ struct device {
 	/* arch specific additions */
 	struct dev_archdata	archdata;
 
+	/* 与该设备关联的device node节点 */
 	struct device_node	*of_node; /* associated device tree node */
+	/* firmware设备的节点 */
 	struct fwnode_handle	*fwnode; /* firmware device node */
 
 #ifdef CONFIG_NUMA
@@ -545,8 +598,10 @@ struct device {
 	u32			id;	/* device instance */
 
 	spinlock_t		devres_lock;
+	/* 设备资源的链表 */
 	struct list_head	devres_head;
 
+	/* 该设备所属的class */
 	struct class		*class;
 	const struct attribute_group **groups;	/* optional groups */
 
@@ -557,6 +612,7 @@ struct device {
 	enum device_removable	removable;
 
 	bool			offline_disabled:1;
+	/* 设备是否offline */
 	bool			offline:1;
 	bool			of_node_reused:1;
 	bool			state_synced:1;
@@ -585,6 +641,19 @@ struct device {
  * @rm_work: Work structure used for removing the link.
  * @supplier_preactivated: Supplier has been made active before consumer probe.
  */
+/* 表示一个设备link
+   supplier：在link supplier端的设备
+   s_node：连接到supplier设备与consumer的链接列表
+   consumer：在link的consumer端设备
+   c_node：连接到consumer设备与supplier的链接列表
+   link_dev：设备用于向sysfs暴露链接细节
+   status：link的状态
+   flags：link标志
+   rpm_active：consumer设备是否处于runtime-PM-active
+   kref：计算同一链接的重复添加次数
+   rm_work：用于移除该link的work结构体
+   supplier_preactivated：在consumer probe之前，supplier已经activele
+*/
 struct device_link {
 	struct device *supplier;
 	struct list_head s_node;
@@ -959,6 +1028,7 @@ void device_shutdown(void);
 const char *dev_driver_string(const struct device *dev);
 
 /* Device links interface. */
+/* 设备link接口 */
 struct device_link *device_link_add(struct device *consumer,
 				    struct device *supplier, u32 flags);
 void device_link_del(struct device_link *link);

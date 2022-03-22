@@ -62,8 +62,13 @@ struct worker {
 /**
  * current_wq_worker - return struct worker if %current is a workqueue worker
  */
+/* 若current线程是一个workqueue的worker，则返回worker结构体指针 */
 static inline struct worker *current_wq_worker(void)
 {
+	/* in_task判断当前是否在进程上下文执行，
+       PF_WQ_WORKER标志标明current线程是一个worker线程，
+       线程的kthread_data指向worker结构体
+	*/
 	if (in_task() && (current->flags & PF_WQ_WORKER))
 		return kthread_data(current);
 	return NULL;

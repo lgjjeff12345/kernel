@@ -78,9 +78,13 @@ struct linux_binprm {
 #define BINPRM_FLAGS_PRESERVE_ARGV0 (1 << BINPRM_FLAGS_PRESERVE_ARGV0_BIT)
 
 /* Function parameter for binfmt->coredump */
+/* core dump参数 */
 struct coredump_params {
+	/* 内核的信号信息 */
 	const kernel_siginfo_t *siginfo;
+	/* 寄存器信息 */
 	struct pt_regs *regs;
+	/* 文件信息 */
 	struct file *file;
 	unsigned long limit;
 	unsigned long mm_flags;
@@ -93,6 +97,12 @@ struct coredump_params {
  * This structure defines the functions that are used to load the binary formats that
  * linux accepts.
  */
+/* 该结构体定义了用于加载linux支持的二进制格式的回调
+   load_binary：加载二进制文件
+   load_shlib：加载共享库
+   core_dump：core dump回调
+   min_coredump：最小的core dump size
+*/
 struct linux_binfmt {
 	struct list_head lh;
 	struct module *module;

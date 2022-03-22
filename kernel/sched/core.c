@@ -122,6 +122,7 @@ static inline bool prio_less(struct task_struct *a, struct task_struct *b, bool 
 	if (-pb < -pa)
 		return false;
 
+	/* deadline调度器，deadline时间越靠前，其优先级越高 */
 	if (pa == -1) /* dl_prio() doesn't work because of stop_class above */
 		return !dl_time_before(a->dl.deadline, b->dl.deadline);
 
@@ -602,6 +603,7 @@ static void update_rq_clock_task(struct rq *rq, s64 delta)
 	s64 __maybe_unused steal = 0, irq_delta = 0;
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
+	/* 计算irq消耗的时间 */
 	irq_delta = irq_time_read(cpu_of(rq)) - rq->prev_irq_time;
 
 	/*
@@ -622,11 +624,13 @@ static void update_rq_clock_task(struct rq *rq, s64 delta)
 	if (irq_delta > delta)
 		irq_delta = delta;
 
+	/* 更新irq时间 */
 	rq->prev_irq_time += irq_delta;
 	delta -= irq_delta;
 #endif
 #ifdef CONFIG_PARAVIRT_TIME_ACCOUNTING
 	if (static_key_false((&paravirt_steal_rq_enabled))) {
+		/* 计算并更新steal时间 */
 		steal = paravirt_steal_clock(cpu_of(rq));
 		steal -= rq->prev_steal_time_rq;
 
@@ -638,15 +642,18 @@ static void update_rq_clock_task(struct rq *rq, s64 delta)
 	}
 #endif
 
+	/* 更新clock_task时间，该时间为总时间clock减去irq时间和steal时间的值 */
 	rq->clock_task += delta;
 
 #ifdef CONFIG_HAVE_SCHED_AVG_IRQ
 	if ((irq_delta + steal) && sched_feat(NONTASK_CAPACITY))
 		update_irq_load_avg(rq, irq_delta + steal);
 #endif
+	/* 更新rq的pelt时间clock_pelt */
 	update_rq_clock_pelt(rq, delta);
 }
 
+/* 更新rq的时钟 */
 void update_rq_clock(struct rq *rq)
 {
 	s64 delta;
@@ -662,10 +669,13 @@ void update_rq_clock(struct rq *rq)
 	rq->clock_update_flags |= RQCF_UPDATED;
 #endif
 
+	/* 获取当前时间与上次记录的rq 时间差值 */
 	delta = sched_clock_cpu(cpu_of(rq)) - rq->clock;
 	if (delta < 0)
 		return;
+	/* 更新rq时间 */
 	rq->clock += delta;
+	/* 更新rq的task运行时间 */
 	update_rq_clock_task(rq, delta);
 }
 
@@ -676,6 +686,7 @@ void update_rq_clock(struct rq *rq)
 
 static void hrtick_clear(struct rq *rq)
 {
+	/* 取消rq的高精度定时器 */
 	if (hrtimer_active(&rq->hrtick_timer))
 		hrtimer_cancel(&rq->hrtick_timer);
 }
@@ -684,6 +695,7 @@ static void hrtick_clear(struct rq *rq)
  * High-resolution timer tick.
  * Runs from hardirq context with interrupts disabled.
  */
+/* hrtick的处理函数 */
 static enum hrtimer_restart hrtick(struct hrtimer *timer)
 {
 	struct rq *rq = container_of(timer, struct rq, hrtick_timer);
@@ -692,6 +704,7 @@ static enum hrtimer_restart hrtick(struct hrtimer *timer)
 	WARN_ON_ONCE(cpu_of(rq) != smp_processor_id());
 
 	rq_lock(rq, &rf);
+	/* 更新rq的时间 */
 	update_rq_clock(rq);
 	rq->curr->sched_class->task_tick(rq, rq->curr, 1);
 	rq_unlock(rq, &rf);
@@ -736,6 +749,7 @@ void hrtick_start(struct rq *rq, u64 delay)
 	 * Don't schedule slices shorter than 10000ns, that just
 	 * doesn't make sense and can cause timer DoS.
 	 */
+	/* 调度时间片不能小于10us */
 	delta = max_t(s64, delay, 10000LL);
 	rq->hrtick_time = ktime_add_ns(timer->base->get_time(), delta);
 
@@ -1001,7 +1015,11 @@ int get_nohz_timer_target(void)
 	}
 
 	rcu_read_lock();
+	/* 从该sched domain中查找一个非idle的cpu，若找不到则从其父domain中查找，直到
+	   根domain
+	*/
 	for_each_domain(cpu, sd) {
+		/* 查找该domain中符合后面两个mask的cpu */
 		for_each_cpu_and(i, sched_domain_span(sd),
 			housekeeping_cpumask(HK_FLAG_TIMER)) {
 			if (cpu == i)
@@ -2058,13 +2076,20 @@ static inline void check_class_changed(struct rq *rq, struct task_struct *p,
 		p->sched_class->prio_changed(rq, p, oldprio);
 }
 
+/* 检查是否需要抢占当前任务 */
 void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
 {
+	/* 若sched class更高，则直接抢占。
+	   若sched class相同，则调用对应调度类的check_preempt_curr回调
+	*/
 	if (p->sched_class == rq->curr->sched_class)
 		rq->curr->sched_class->check_preempt_curr(rq, p, flags);
 	else if (p->sched_class > rq->curr->sched_class)
 		resched_curr(rq);
 
+	/* 若新进程的调度类更低，则判断当前运行的进程是否需要被抢占
+	   若需要被抢占，则设置RQCF_REQ_SKIP标志
+	*/
 	/*
 	 * A queue event has occurred, and we're going to schedule.  In
 	 * this case, we can save a useless back to back clock update.
@@ -2444,6 +2469,7 @@ __do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask, u32
 	queued = task_on_rq_queued(p);
 	running = task_current(rq, p);
 
+	/* 先将其dequeue，或停止运行 */
 	if (queued) {
 		/*
 		 * Because __kthread_bind() calls this on blocked tasks without
@@ -2455,14 +2481,17 @@ __do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask, u32
 	if (running)
 		put_prev_task(rq, p);
 
+	/* 设置其allowed cpu掩码 */
 	p->sched_class->set_cpus_allowed(p, new_mask, flags);
 
+	/* 重新将任务入队，或设置为next运行进程 */
 	if (queued)
 		enqueue_task(rq, p, ENQUEUE_RESTORE | ENQUEUE_NOCLOCK);
 	if (running)
 		set_next_task(rq, p);
 }
 
+/* 将进程绑定到一组cpu上 */
 void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 {
 	__do_set_cpus_allowed(p, new_mask, 0);
@@ -2693,6 +2722,9 @@ static int affine_move_task(struct rq *rq, struct task_struct *p, struct rq_flag
  * task must not exit() & deallocate itself prematurely. The
  * call is not atomic; no spinlocks may be held.
  */
+/* 设置给定线程的cpu affinity。将线程迁移到合适的cpu，且若线程正在
+   执行的cpu已不在允许的bitmask中时，则将该线程从当前cpu调度走。
+*/
 static int __set_cpus_allowed_ptr(struct task_struct *p,
 				  const struct cpumask *new_mask,
 				  u32 flags)
@@ -2717,6 +2749,11 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 		 * SCA_MIGRATE_ENABLE, otherwise we'll not call
 		 * set_cpus_allowed_common() and actually reset p->cpus_ptr.
 		 */
+		/* 内核线程允许在online且非active的cpu上，当然，在cpu-hot-unplug期间，
+           若未设置KTHREAD_IS_PER_CPU标志，这些线程还是可能会被push away。
+
+           migration_disabled任务在cpumask_any_and_distribute pick中不能失败
+		*/
 		cpu_valid_mask = cpu_online_mask;
 	}
 
@@ -2746,6 +2783,7 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 	 * for groups of tasks (ie. cpuset), so that load balancing is not
 	 * immediately required to distribute the tasks within their new mask.
 	 */
+	/* 选择一个目的cpu */
 	dest_cpu = cpumask_any_and_distribute(cpu_valid_mask, new_mask);
 	if (dest_cpu >= nr_cpu_ids) {
 		ret = -EINVAL;
@@ -2754,6 +2792,7 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 
 	__do_set_cpus_allowed(p, new_mask, flags);
 
+	/* 将进程迁移到目的cpu上 */
 	return affine_move_task(rq, p, &rf, dest_cpu, flags);
 
 out:
@@ -2762,6 +2801,7 @@ out:
 	return ret;
 }
 
+/* 设置允许的cpu mask */
 int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask)
 {
 	return __set_cpus_allowed_ptr(p, new_mask, 0);
@@ -2813,6 +2853,7 @@ void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
 	trace_sched_migrate_task(p, new_cpu);
 
 	if (task_cpu(p) != new_cpu) {
+		/* 调用该调度类的migrate_task_rq回调 */
 		if (p->sched_class->migrate_task_rq)
 			p->sched_class->migrate_task_rq(p, new_cpu);
 		p->se.nr_migrations++;
@@ -3467,6 +3508,7 @@ static void __ttwu_queue_wakelist(struct task_struct *p, int cpu, int wake_flags
 	__smp_call_single_queue(cpu, &p->wake_entry.llist);
 }
 
+/* 唤醒idle状态的cpu */
 void wake_up_if_idle(int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
@@ -3474,6 +3516,10 @@ void wake_up_if_idle(int cpu)
 
 	rcu_read_lock();
 
+	/* 获取该cpu对应的rq，并获取该rq当前正在执行的线程，
+       若该线程当前正处于idle状态，则执行以下操作。否则，
+       不做任何处理
+	*/
 	if (!is_idle_task(rcu_dereference(rq->curr)))
 		goto out;
 
@@ -3481,6 +3527,7 @@ void wake_up_if_idle(int cpu)
 		trace_sched_wake_idle_without_ipi(cpu);
 	} else {
 		rq_lock_irqsave(rq, &rf);
+		/* 向该cpu发送reschedule的ipi中断 */
 		if (is_idle_task(rq->curr))
 			smp_send_reschedule(cpu);
 		/* Else CPU is not idle, do nothing here: */
@@ -3491,6 +3538,7 @@ out:
 	rcu_read_unlock();
 }
 
+/* 判断两个cpu是否共享cache */
 bool cpus_share_cache(int this_cpu, int that_cpu)
 {
 	return per_cpu(sd_llc_id, this_cpu) == per_cpu(sd_llc_id, that_cpu);
@@ -6503,6 +6551,7 @@ static inline int rt_effective_prio(struct task_struct *p, int prio)
 }
 #endif
 
+/* 设置线程的nice值 */
 void set_user_nice(struct task_struct *p, long nice)
 {
 	bool queued, running;
@@ -6525,22 +6574,30 @@ void set_user_nice(struct task_struct *p, long nice)
 	 * it won't have any effect on scheduling until the task is
 	 * SCHED_DEADLINE, SCHED_FIFO or SCHED_RR:
 	 */
+	/* 对于rt线程，设置其静态优先级 */
 	if (task_has_dl_policy(p) || task_has_rt_policy(p)) {
 		p->static_prio = NICE_TO_PRIO(nice);
 		goto out_unlock;
 	}
+	/* 进程位于就绪队列 */
 	queued = task_on_rq_queued(p);
+	/* 进程正在运行 */
 	running = task_current(rq, p);
+	/* 先将其出队，或者停止其运行 */
 	if (queued)
 		dequeue_task(rq, p, DEQUEUE_SAVE | DEQUEUE_NOCLOCK);
 	if (running)
 		put_prev_task(rq, p);
 
+	/* 设置其静态优先级 */
 	p->static_prio = NICE_TO_PRIO(nice);
+	/* 设置其负载 */
 	set_load_weight(p, true);
+	/* 计算其动态优先级 */
 	old_prio = p->prio;
 	p->prio = effective_prio(p);
 
+	/* 重新将其加入队列，或设置为下一个调度的进程 */
 	if (queued)
 		enqueue_task(rq, p, ENQUEUE_RESTORE | ENQUEUE_NOCLOCK);
 	if (running)
@@ -6550,6 +6607,7 @@ void set_user_nice(struct task_struct *p, long nice)
 	 * If the task increased its priority or is running and
 	 * lowered its priority, then reschedule its CPU:
 	 */
+	/* 调用调度类的优先级改变回调 */
 	p->sched_class->prio_changed(rq, p, old_prio);
 
 out_unlock:

@@ -27,7 +27,9 @@
  * @sleep_state: the state at suspend time, if found
  * @idle_state: the state at idle (runtime suspend) time, if found
  */
+/* 设备对应的pin信息 */
 struct dev_pin_info {
+	/* 该设备包含的pinctrl句柄 */
 	struct pinctrl *p;
 	struct pinctrl_state *default_state;
 	struct pinctrl_state *init_state;

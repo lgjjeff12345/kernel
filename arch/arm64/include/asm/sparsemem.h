@@ -12,6 +12,7 @@
  * page size config. Otherwise it will be less than
  * (MAX_ORDER - 1) and the build process will fail.
  */
+/* 对于64k的页，section size为512M，否则为128M */
 #ifdef CONFIG_ARM64_64K_PAGES
 #define SECTION_SIZE_BITS 29
 

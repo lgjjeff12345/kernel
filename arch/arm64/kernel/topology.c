@@ -22,6 +22,7 @@
 #include <asm/cputype.h>
 #include <asm/topology.h>
 
+/* 保存给定cpu的拓扑结构 */
 void store_cpu_topology(unsigned int cpuid)
 {
 	struct cpu_topology *cpuid_topo = &cpu_topology[cpuid];

@@ -76,8 +76,10 @@ asmlinkage void secondary_start_kernel(void);
  * @status - Result passed back from the secondary CPU to
  *           indicate failure.
  */
+/* bringup一个secondary cpu的初始化数据 */
 struct secondary_data {
 	struct task_struct *task;
+	/* secondary cpu返回的执行结果 */
 	long status;
 };
 

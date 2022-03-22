@@ -762,6 +762,7 @@ static void tick_handle_oneshot_broadcast(struct clock_event_device *dev)
 	}
 }
 
+/* 判断broadcast cpu是否绑定到指定cpu上 */
 static int broadcast_needs_cpu(struct clock_event_device *bc, int cpu)
 {
 	if (!(bc->features & CLOCK_EVT_FEAT_HRTIMER))
@@ -1079,6 +1080,7 @@ void tick_broadcast_switch_to_oneshot(void)
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
+/* 将tick broadcast cpu从deadcpu上移除 */
 void hotplug_cpu__broadcast_tick_pull(int deadcpu)
 {
 	struct clock_event_device *bc;
@@ -1087,8 +1089,10 @@ void hotplug_cpu__broadcast_tick_pull(int deadcpu)
 	raw_spin_lock_irqsave(&tick_broadcast_lock, flags);
 	bc = tick_broadcast_device.evtdev;
 
+	/* 判断broadcast cpu是否绑定到指定cpu上 */
 	if (bc && broadcast_needs_cpu(bc, deadcpu)) {
 		/* This moves the broadcast assignment to this CPU: */
+		/* 将broadcast cpu从执行cpu上移除 */
 		clockevents_program_event(bc, bc->next_event, 1);
 	}
 	raw_spin_unlock_irqrestore(&tick_broadcast_lock, flags);

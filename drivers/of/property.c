@@ -37,6 +37,7 @@
  * Return: True if @node has a port or ports (with a port) sub-node,
  * false otherwise.
  */
+/* 检查是否存在graph */
 bool of_graph_is_present(const struct device_node *node)
 {
 	struct device_node *ports, *port;
@@ -457,9 +458,13 @@ EXPORT_SYMBOL_GPL(of_property_read_string);
  * This function searches a string list property and returns the index
  * of a specific string value.
  */
+/* 读取该节点由参数propname给定的属性，并将该属性值与给定的参数string比较。
+   判断其是否匹配
+*/
 int of_property_match_string(const struct device_node *np, const char *propname,
 			     const char *string)
 {
+	/* 获取给定属性 */
 	const struct property *prop = of_find_property(np, propname, NULL);
 	size_t l;
 	int i;
@@ -470,9 +475,11 @@ int of_property_match_string(const struct device_node *np, const char *propname,
 	if (!prop->value)
 		return -ENODATA;
 
+	/* 获取属性的值 */
 	p = prop->value;
 	end = p + prop->length;
 
+	/* 检查该属性的值与由string给定的参数是否匹配 */
 	for (i = 0; p < end; i++, p += l) {
 		l = strnlen(p, end - p) + 1;
 		if (p + l > end)
@@ -1398,6 +1405,7 @@ static const struct supplier_bindings of_supplier_bindings[] = {
  * device tree nodes even when attempts to create a link to one or more
  * suppliers fail.
  */
+/* 创建在一个属性中listed的supplier设备链接 */
 static int of_link_property(struct device_node *con_np, const char *prop_name)
 {
 	struct device_node *phandle;

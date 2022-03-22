@@ -18,6 +18,11 @@
 #include "sched.h"
 #include "pelt.h"
 
+/* 对于周期性执行，且执行时间不超过其给定运行时间的任务，
+   该调度策略保证不会错过任何deadline。 
+   不是周期性执行，或阵发性执行，或试图执行超过其保留带宽的任务，
+   将会被降速，且可能会错过其deadline。且其行为不会影响其它任务
+*/
 struct dl_bandwidth def_dl_bandwidth;
 
 static inline struct task_struct *dl_task_of(struct sched_dl_entity *dl_se)
@@ -25,11 +30,13 @@ static inline struct task_struct *dl_task_of(struct sched_dl_entity *dl_se)
 	return container_of(dl_se, struct task_struct, dl);
 }
 
+/* 获取dl_rq对应的rq */
 static inline struct rq *rq_of_dl_rq(struct dl_rq *dl_rq)
 {
 	return container_of(dl_rq, struct rq, dl);
 }
 
+/* 获取调度实体对应的dl rq */
 static inline struct dl_rq *dl_rq_of_se(struct sched_dl_entity *dl_se)
 {
 	struct task_struct *p = dl_task_of(dl_se);
@@ -38,6 +45,7 @@ static inline struct dl_rq *dl_rq_of_se(struct sched_dl_entity *dl_se)
 	return &rq->dl;
 }
 
+/* 判断该调度实体是否已入队 */
 static inline int on_dl_rq(struct sched_dl_entity *dl_se)
 {
 	return !RB_EMPTY_NODE(&dl_se->rb_node);
@@ -49,6 +57,7 @@ static inline struct sched_dl_entity *pi_of(struct sched_dl_entity *dl_se)
 	return dl_se->pi_se;
 }
 
+/* 若其pi_se不等于dl_se,则该进程是boosted进程 */
 static inline bool is_dl_boosted(struct sched_dl_entity *dl_se)
 {
 	return pi_of(dl_se) != dl_se;
@@ -979,9 +988,14 @@ static inline u64 dl_next_period(struct sched_dl_entity *dl_se)
  * actually started or not (i.e., the replenishment instant is in
  * the future or in the past).
  */
+/* 若该任务耗尽了所有runtime，且希望其在等待新的执行时间之前进入睡眠，
+  我们为replenishment实例设置带宽replenishment定时器，并且尝试激活它。
+  且调用者需要了解定时器是否被启动
+*/
 static int start_dl_timer(struct task_struct *p)
 {
 	struct sched_dl_entity *dl_se = &p->dl;
+	/* 每个dl任务都有一个timer */
 	struct hrtimer *timer = &dl_se->dl_timer;
 	struct rq *rq = task_rq(p);
 	ktime_t now, act;
@@ -1016,6 +1030,7 @@ static int start_dl_timer(struct task_struct *p)
 	 * expiring after we've done the check will wait on its task_rq_lock()
 	 * and observe our state.
 	 */
+	/* 设置定时器，使其在下一个period时到期 */
 	if (!hrtimer_is_queued(timer)) {
 		get_task_struct(p);
 		hrtimer_start(timer, act, HRTIMER_MODE_ABS_HARD);
@@ -1037,6 +1052,13 @@ static int start_dl_timer(struct task_struct *p)
  * updating (and the queueing back to dl_rq) will be done by the
  * next call to enqueue_task_dl().
  */
+/* 该函数是带宽强制timer回调。若本函数执行，表明一个任务已经不在其dl rq
+   上，因为timer运行就表明task已经被throttle，且需要刷新runtime。
+   函数的行为取决于任务当前处于active（位于其rq上），或其已被移除。
+  （1）前一种情况，必须刷新其runtime，并将其加回dl rq。
+  （2）后一种情况，不做任何处理，只是清除dl_throttled标志，从而在下一次
+  enqueue_task_dl调用时更新runtime和deadline
+*/
 static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 {
 	struct sched_dl_entity *dl_se = container_of(timer,
@@ -1052,6 +1074,7 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 	 * The task might have changed its scheduling policy to something
 	 * different than SCHED_DEADLINE (through switched_from_dl()).
 	 */
+	/* 若该任务不是dl任务 */
 	if (!dl_task(p))
 		goto unlock;
 
@@ -1059,6 +1082,7 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 	 * The task might have been boosted by someone else and might be in the
 	 * boosting/deboosting path, its not throttled.
 	 */
+	/* 若该任务为boost任务 */
 	if (is_dl_boosted(dl_se))
 		goto unlock;
 
@@ -1066,10 +1090,12 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 	 * Spurious timer due to start_dl_timer() race; or we already received
 	 * a replenishment from rt_mutex_setprio().
 	 */
+	/* 若该任务未throttle */
 	if (!dl_se->dl_throttled)
 		goto unlock;
 
 	sched_clock_tick();
+	/* 更新rq时间 */
 	update_rq_clock(rq);
 
 	/*
@@ -1086,12 +1112,15 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 	 * We can be both throttled and !queued. Replenish the counter
 	 * but do not enqueue -- wait for our wakeup to do that.
 	 */
+	/* 任务未入队 */
 	if (!task_on_rq_queued(p)) {
+		/* 重新刷新dl调度实体 */
 		replenish_dl_entity(dl_se);
 		goto unlock;
 	}
 
 #ifdef CONFIG_SMP
+	/* 若该rq不在线，则将该任务迁移到其它的rq上 */
 	if (unlikely(!rq->online)) {
 		/*
 		 * If the runqueue is no longer available, migrate the
@@ -1110,6 +1139,7 @@ static enum hrtimer_restart dl_task_timer(struct hrtimer *timer)
 	}
 #endif
 
+	/* 将任务重新入队 */
 	enqueue_task_dl(rq, p, ENQUEUE_REPLENISH);
 	if (dl_task(rq->curr))
 		check_preempt_curr_dl(rq, p, 0);
@@ -1144,6 +1174,7 @@ unlock:
 	return HRTIMER_NORESTART;
 }
 
+/* 初始化dl任务的定时器 */
 void init_dl_task_timer(struct sched_dl_entity *dl_se)
 {
 	struct hrtimer *timer = &dl_se->dl_timer;
@@ -1170,21 +1201,39 @@ void init_dl_task_timer(struct sched_dl_entity *dl_se)
  * task and set the replenishing timer to the begin of the next period,
  * unless it is boosted.
  */
+/* 检查dl的限制
+   在激活期间，cbs会检查其是否可以reuse当前任务的运行时间和周期。
+   若任务的deadline已经过去，cbs不能使用runtime，因此它会replenish
+   任务。
+   对于implicit deadline任务（deadline = period），以及为implicit deadline任务
+   设计的cbs，它能工作的很好。这种情况，replenish任务允许其可以运行runtime / deadline。
+   对于deadline < period的情形，若系统负载较重，可能会引起多米诺效应，从而导致其它的
+   任务错过其deadline。
+   为了避免这一问题，在deadline之后，但在下一个period之前激活受限的deadline任务，
+   除非其是boosted，否则throttle该任务，并设置replenishing定时器以开始下一个周期
+*/
 static inline void dl_check_constrained_dl(struct sched_dl_entity *dl_se)
 {
 	struct task_struct *p = dl_task_of(dl_se);
 	struct rq *rq = rq_of_dl_rq(dl_rq_of_se(dl_se));
 
+	/* 该调度实体的deadline已过去，且下一个period还未到 */
 	if (dl_time_before(dl_se->deadline, rq_clock(rq)) &&
 	    dl_time_before(rq_clock(rq), dl_next_period(dl_se))) {
+	    /* 该调度实体是boosted实体，不处理。
+		   否则，启动dl timer，若启动失败，则不处理退出，
+		   否则，设置下述标志和更新runtime
+	    */
 		if (unlikely(is_dl_boosted(dl_se) || !start_dl_timer(p)))
 			return;
+		/* 将其throttle，并将其运行时间清0 */
 		dl_se->dl_throttled = 1;
 		if (dl_se->runtime > 0)
 			dl_se->runtime = 0;
 	}
 }
 
+/* 调度实体超时运行 */
 static
 int dl_runtime_exceeded(struct sched_dl_entity *dl_se)
 {
@@ -1467,11 +1516,13 @@ void dec_dl_tasks(struct sched_dl_entity *dl_se, struct dl_rq *dl_rq)
 #define __node_2_dle(node) \
 	rb_entry((node), struct sched_dl_entity, rb_node)
 
+/* 通过比较deadline的值来排序进程，deadline越靠前的进程，优先级越高 */
 static inline bool __dl_less(struct rb_node *a, const struct rb_node *b)
 {
 	return dl_time_before(__node_2_dle(a)->deadline, __node_2_dle(b)->deadline);
 }
 
+/* 将deadline进程加入队列 */
 static void __enqueue_dl_entity(struct sched_dl_entity *dl_se)
 {
 	struct dl_rq *dl_rq = dl_rq_of_se(dl_se);
@@ -1483,6 +1534,7 @@ static void __enqueue_dl_entity(struct sched_dl_entity *dl_se)
 	inc_dl_tasks(dl_se, dl_rq);
 }
 
+/* 将deadline进程出队 */
 static void __dequeue_dl_entity(struct sched_dl_entity *dl_se)
 {
 	struct dl_rq *dl_rq = dl_rq_of_se(dl_se);
@@ -1490,6 +1542,7 @@ static void __dequeue_dl_entity(struct sched_dl_entity *dl_se)
 	if (RB_EMPTY_NODE(&dl_se->rb_node))
 		return;
 
+	/* 从红黑树中删除该进程节点 */
 	rb_erase_cached(&dl_se->rb_node, &dl_rq->root);
 
 	RB_CLEAR_NODE(&dl_se->rb_node);
@@ -1526,6 +1579,7 @@ static void dequeue_dl_entity(struct sched_dl_entity *dl_se)
 	__dequeue_dl_entity(dl_se);
 }
 
+/* 将进程加入队列 */
 static void enqueue_task_dl(struct rq *rq, struct task_struct *p, int flags)
 {
 	if (is_dl_boosted(&p->dl)) {
@@ -1812,6 +1866,7 @@ static void check_preempt_curr_dl(struct rq *rq, struct task_struct *p,
 }
 
 #ifdef CONFIG_SCHED_HRTICK
+/* 启动高精度定时器，定时时间为该任务的运行时间 */
 static void start_hrtick_dl(struct rq *rq, struct task_struct *p)
 {
 	hrtick_start(rq, p->dl.runtime);
@@ -1841,6 +1896,7 @@ static void set_next_task_dl(struct rq *rq, struct task_struct *p, bool first)
 	deadline_queue_push_tasks(rq);
 }
 
+/* 获取最左侧的叶节点，作为netx entity */
 static struct sched_dl_entity *pick_next_dl_entity(struct rq *rq,
 						   struct dl_rq *dl_rq)
 {
@@ -1852,26 +1908,31 @@ static struct sched_dl_entity *pick_next_dl_entity(struct rq *rq,
 	return rb_entry(left, struct sched_dl_entity, rb_node);
 }
 
+/* 从dl队列上获取任务 */
 static struct task_struct *pick_task_dl(struct rq *rq)
 {
 	struct sched_dl_entity *dl_se;
 	struct dl_rq *dl_rq = &rq->dl;
 	struct task_struct *p;
 
+	/* 若dl队列上没有可运行任务，直接返回 */
 	if (!sched_dl_runnable(rq))
 		return NULL;
 
 	dl_se = pick_next_dl_entity(rq, dl_rq);
 	BUG_ON(!dl_se);
+	/* 根据调度实体，获取其对应的task */
 	p = dl_task_of(dl_se);
 
 	return p;
 }
 
+/* 在dl队列上，获取下一个可运行的任务 */
 static struct task_struct *pick_next_task_dl(struct rq *rq)
 {
 	struct task_struct *p;
 
+	/* 从红黑树上获取任务，并将其设置为next task */
 	p = pick_task_dl(rq);
 	if (p)
 		set_next_task_dl(rq, p, true);
@@ -1896,6 +1957,7 @@ static void put_prev_task_dl(struct rq *rq, struct task_struct *p)
  * and everything must be accessed through the @rq and @curr passed in
  * parameters.
  */
+/* dl调度类也通过一个高精度定时器，以为时间片定时 */
 static void task_tick_dl(struct rq *rq, struct task_struct *p, int queued)
 {
 	update_curr_dl(rq);

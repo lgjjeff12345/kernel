@@ -64,15 +64,21 @@ EXPORT_PER_CPU_SYMBOL(cpu_number);
  */
 struct secondary_data secondary_data;
 /* Number of CPUs which aren't online, but looping in kernel text. */
+/* 在内核代码段loop，且处于非online状态的cpu数量 */
 static int cpus_stuck_in_kernel;
-
+/* ipi消息类型 */
 enum ipi_msg_type {
+	/* 重调度消息 */
 	IPI_RESCHEDULE,
+	/* 远程函数调用消息 */
 	IPI_CALL_FUNC,
+	/* cpu停止ipi消息 */
 	IPI_CPU_STOP,
 	IPI_CPU_CRASH_STOP,
+	/* timer消息 */
 	IPI_TIMER,
 	IPI_IRQ_WORK,
+	/* 唤醒消息 */
 	IPI_WAKEUP,
 	NR_IPI
 };
@@ -98,6 +104,7 @@ static inline int op_cpu_kill(unsigned int cpu)
  * Boot a secondary CPU, and assign it the specified idle task.
  * This also gives us the initial stack to use for this CPU.
  */
+/* 启动一个secondary cpu，它最终会调用psci的cpu_on接口 */
 static int boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
 	const struct cpu_operations *ops = get_cpu_ops(cpu);
@@ -110,6 +117,7 @@ static int boot_secondary(unsigned int cpu, struct task_struct *idle)
 
 static DECLARE_COMPLETION(cpu_running);
 
+/* cpu up函数 */
 int __cpu_up(unsigned int cpu, struct task_struct *idle)
 {
 	int ret;
@@ -133,17 +141,21 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 	 * CPU was successfully started, wait for it to come online or
 	 * time out.
 	 */
+	/* 等待cpu启动完成，最长等待5分钟 */
 	wait_for_completion_timeout(&cpu_running,
 				    msecs_to_jiffies(5000));
+	/* boot成功，直接返回 */
 	if (cpu_online(cpu))
 		return 0;
 
+	/* boot失败处理 */
 	pr_crit("CPU%u: failed to come online\n", cpu);
 	secondary_data.task = NULL;
 	status = READ_ONCE(secondary_data.status);
 	if (status == CPU_MMU_OFF)
 		status = READ_ONCE(__early_cpu_boot_status);
 
+	/* 根据返回的状态信息，输出相应的错误 */
 	switch (status & CPU_BOOT_STATUS_MASK) {
 	default:
 		pr_err("CPU%u: failed in unknown state : 0x%lx\n",
@@ -193,6 +205,7 @@ static void init_gic_priority_masking(void)
  * This is the secondary CPU boot entry.  We're using this CPUs
  * idle thread stack, but a set of temporary page tables.
  */
+/* secondary cpu启动入口，使用该cpu的idle线程栈，以及一组临时的页表 */
 asmlinkage notrace void secondary_start_kernel(void)
 {
 	u64 mpidr = read_cpuid_mpidr() & MPIDR_HWID_BITMASK;
@@ -262,6 +275,7 @@ asmlinkage notrace void secondary_start_kernel(void)
 	/*
 	 * OK, it's off to the idle thread for us
 	 */
+	/* 进入idle线程 */
 	cpu_startup_entry(CPUHP_AP_ONLINE_IDLE);
 }
 
@@ -274,6 +288,7 @@ static int op_cpu_disable(unsigned int cpu)
 	 * If we don't have a cpu_die method, abort before we reach the point
 	 * of no return. CPU0 may not have an cpu_ops, so test for it.
 	 */
+	/* 实际的cpu off操作在cpu_die回调中 */
 	if (!ops || !ops->cpu_die)
 		return -EOPNOTSUPP;
 
@@ -281,6 +296,7 @@ static int op_cpu_disable(unsigned int cpu)
 	 * We may need to abort a hot unplug for some other mechanism-specific
 	 * reason.
 	 */
+	/* 检查该cpu是否允许cpu unplug。如对于tos reside cpu，不允许将其unplug */
 	if (ops->cpu_disable)
 		return ops->cpu_disable(cpu);
 
@@ -290,11 +306,13 @@ static int op_cpu_disable(unsigned int cpu)
 /*
  * __cpu_disable runs on the processor to be shutdown.
  */
+/* 关闭当前cpu之前的准备工作 */
 int __cpu_disable(void)
 {
 	unsigned int cpu = smp_processor_id();
 	int ret;
 
+	/* 检查cpu是否可以unplug */
 	ret = op_cpu_disable(cpu);
 	if (ret)
 		return ret;
@@ -306,17 +324,21 @@ int __cpu_disable(void)
 	 * Take this CPU offline.  Once we clear this, we can't return,
 	 * and we must not schedule until we're ready to give up the cpu.
 	 */
+	/* 设置cpu的online标志 */
 	set_cpu_online(cpu, false);
+	/* 关闭本cpu上所有的ppi中断 */
 	ipi_teardown(cpu);
 
 	/*
 	 * OK - migrate IRQs away from this CPU
 	 */
+	/* 迁移本cpu上的所有中断 */
 	irq_migrate_all_off_this_cpu();
 
 	return 0;
 }
 
+/* kill cpu，主要用于同步作用。它由其它cpu执行 */
 static int op_cpu_kill(unsigned int cpu)
 {
 	const struct cpu_operations *ops = get_cpu_ops(cpu);
@@ -336,6 +358,10 @@ static int op_cpu_kill(unsigned int cpu)
  * called on the thread which is asking for a CPU to be shutdown -
  * waits until shutdown has completed, or it is timed out.
  */
+/* 运行在需要查询cpu关闭状态的线程，它会等到cpu off完成，
+   并执行同步操作
+   它由kernel/cpu.c中的takedown_cpu调用
+*/
 void __cpu_die(unsigned int cpu)
 {
 	int err;
@@ -366,6 +392,7 @@ void cpu_die(void)
 	unsigned int cpu = smp_processor_id();
 	const struct cpu_operations *ops = get_cpu_ops(cpu);
 
+	/* 退出idle线程 */
 	idle_task_exit();
 
 	local_daif_mask();
@@ -378,6 +405,7 @@ void cpu_die(void)
 	 * mechanism must perform all required cache maintenance to ensure that
 	 * no dirty lines are lost in the process of shutting down the CPU.
 	 */
+	/* 实际的shutdown cpu操作，arm64会调用psci接口 */
 	ops->cpu_die(cpu);
 
 	BUG();
@@ -405,6 +433,7 @@ void cpu_die_early(void)
 	pr_crit("CPU%d: will not boot\n", cpu);
 
 	/* Mark this CPU absent */
+	/* 清除cpu的present标志 */
 	set_cpu_present(cpu, 0);
 	rcu_report_dead(cpu);
 
@@ -476,6 +505,7 @@ static u64 __init of_get_cpu_mpidr(struct device_node *dn)
 	 * considered invalid to build a cpu_logical_map
 	 * entry.
 	 */
+	/* 获取其reg */
 	cell = of_get_property(dn, "reg", NULL);
 	if (!cell) {
 		pr_err("%pOF: missing reg property\n", dn);
@@ -499,6 +529,7 @@ static u64 __init of_get_cpu_mpidr(struct device_node *dn)
  * cpu. cpu_logical_map was initialized to INVALID_HWID to avoid
  * matching valid MPIDR values.
  */
+/* 是否含有重复的mpidr */
 static bool __init is_mpidr_duplicate(unsigned int cpu, u64 hwid)
 {
 	unsigned int i;
@@ -517,13 +548,16 @@ static int __init smp_cpu_setup(int cpu)
 {
 	const struct cpu_operations *ops;
 
+	/* 初始化cpu ops，如psci还是spin table */
 	if (init_cpu_ops(cpu))
 		return -ENODEV;
 
+	/* 获取cpu ops，并执行其cpu_init操作 */
 	ops = get_cpu_ops(cpu);
 	if (ops->cpu_init(cpu))
 		return -ENODEV;
 
+	/* 将cpu设置为possible */
 	set_cpu_possible(cpu, true);
 
 	return 0;
@@ -651,11 +685,14 @@ static void __init acpi_parse_and_init_cpus(void)
  * cpu logical map array containing MPIDR values related to logical
  * cpus. Assumes that cpu_logical_map(0) has already been initialized.
  */
+/* 解析devicetree并初始化cpu信息 */
 static void __init of_parse_and_init_cpus(void)
 {
 	struct device_node *dn;
 
+	/* 遍历cpu节点 */
 	for_each_of_cpu_node(dn) {
+		/* 获取该cpu的mpidr值 */
 		u64 hwid = of_get_cpu_mpidr(dn);
 
 		if (hwid == INVALID_HWID)
@@ -709,10 +746,12 @@ next:
  * cpu logical map array containing MPIDR values related to logical
  * cpus. Assumes that cpu_logical_map(0) has already been initialized.
  */
+/* 初始化smp cpu */
 void __init smp_init_cpus(void)
 {
 	int i;
 
+	/* 解析devicetree并初始化cpu信息 */
 	if (acpi_disabled)
 		of_parse_and_init_cpus();
 	else
@@ -742,6 +781,7 @@ void __init smp_init_cpus(void)
 	}
 }
 
+/* 准备smp cpu */
 void __init smp_prepare_cpus(unsigned int max_cpus)
 {
 	const struct cpu_operations *ops;
@@ -749,10 +789,16 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 	unsigned int cpu;
 	unsigned int this_cpu;
 
+	/* 从device tree中解析出cluster/core/thread/cpu的cpu拓扑信息，
+       以及cpu的capacity和freq信息
+	*/
 	init_cpu_topology();
 
+	/* 保存cpu拓扑结构 */
 	this_cpu = smp_processor_id();
+	/* 更新其sibling信息 */
 	store_cpu_topology(this_cpu);
+	/* 当前cpu的numa设置 */
 	numa_store_cpu_info(this_cpu);
 	numa_add_cpu(this_cpu);
 
@@ -770,11 +816,14 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 	 */
 	for_each_possible_cpu(cpu) {
 
+		/* 设置percpu变量cpu_number */
 		per_cpu(cpu_number, cpu) = cpu;
 
+		/* 当前cpu不处理 */
 		if (cpu == smp_processor_id())
 			continue;
 
+		/* 获取cpu ops函数，并执行其cpu_prepare回调 */
 		ops = get_cpu_ops(cpu);
 		if (!ops)
 			continue;
@@ -783,7 +832,9 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 		if (err)
 			continue;
 
+		/* 将cpu设置为present */
 		set_cpu_present(cpu, true);
+		/* 设置给定cpu的numa信息 */
 		numa_store_cpu_info(cpu);
 	}
 }
@@ -842,12 +893,14 @@ void arch_irq_work_raise(void)
 }
 #endif
 
+/* 停止本cpu */
 static void local_cpu_stop(void)
 {
 	set_cpu_online(smp_processor_id(), false);
 
 	local_daif_mask();
 	sdei_mask_local_cpu();
+	/* 将cpu设置为wfe状态 */
 	cpu_park_loop();
 }
 
@@ -856,6 +909,7 @@ static void local_cpu_stop(void)
  * that cpu_online_mask gets correctly updated and smp_send_stop() can skip
  * CPUs that have already stopped themselves.
  */
+/* panic时停止本cpu */
 void panic_smp_self_stop(void)
 {
 	local_cpu_stop();
@@ -943,6 +997,7 @@ static void do_handle_IPI(int ipinr)
 		trace_ipi_exit_rcuidle(ipi_types[ipinr]);
 }
 
+/* ipi处理函数 */
 static irqreturn_t ipi_handler(int irq, void *data)
 {
 	do_handle_IPI(irq - ipi_irq_base);
@@ -955,6 +1010,7 @@ static void smp_cross_call(const struct cpumask *target, unsigned int ipinr)
 	__ipi_send_mask(ipi_desc[ipinr], target);
 }
 
+/* ipi设置 */
 static void ipi_setup(int cpu)
 {
 	int i;
@@ -962,11 +1018,13 @@ static void ipi_setup(int cpu)
 	if (WARN_ON_ONCE(!ipi_irq_base))
 		return;
 
+	/* 使能ipi */
 	for (i = 0; i < nr_ipi; i++)
 		enable_percpu_irq(ipi_irq_base + i, 0);
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
+/* 关闭本cpu上所有的ppi中断 */
 static void ipi_teardown(int cpu)
 {
 	int i;
@@ -974,11 +1032,13 @@ static void ipi_teardown(int cpu)
 	if (WARN_ON_ONCE(!ipi_irq_base))
 		return;
 
+	/* 关闭本cpu上所有的ppi中断 */
 	for (i = 0; i < nr_ipi; i++)
 		disable_percpu_irq(ipi_irq_base + i);
 }
 #endif
 
+/* 初始化ipi */
 void __init set_smp_ipi_range(int ipi_base, int n)
 {
 	int i;
@@ -986,6 +1046,7 @@ void __init set_smp_ipi_range(int ipi_base, int n)
 	WARN_ON(n < NR_IPI);
 	nr_ipi = min(n, NR_IPI);
 
+	/* 对每个ipi，分别执行中断申请，中断标志设置流程 */
 	for (i = 0; i < nr_ipi; i++) {
 		int err;
 
@@ -1000,6 +1061,7 @@ void __init set_smp_ipi_range(int ipi_base, int n)
 	ipi_irq_base = ipi_base;
 
 	/* Setup the boot CPU immediately */
+	/* 设置ipi */
 	ipi_setup(smp_processor_id());
 }
 
@@ -1019,6 +1081,7 @@ void tick_broadcast(const struct cpumask *mask)
  * The number of CPUs online, not counting this CPU (which may not be
  * fully online and so not counted in num_online_cpus()).
  */
+/* 除本cpu外的其它cpu数量 */
 static inline unsigned int num_other_online_cpus(void)
 {
 	unsigned int this_cpu_online = cpu_online(smp_processor_id());
@@ -1026,6 +1089,7 @@ static inline unsigned int num_other_online_cpus(void)
 	return num_online_cpus() - this_cpu_online;
 }
 
+/* 停止除本cpu之外的所有其它cpu */
 void smp_send_stop(void)
 {
 	unsigned long timeout;
@@ -1038,18 +1102,22 @@ void smp_send_stop(void)
 
 		if (system_state <= SYSTEM_RUNNING)
 			pr_crit("SMP: stopping secondary CPUs\n");
+		/* 通过ipi发送cpu stop中断 */
 		smp_cross_call(&mask, IPI_CPU_STOP);
 	}
 
 	/* Wait up to one second for other CPUs to stop */
 	timeout = USEC_PER_SEC;
+	/* 等待1s，使得其它cpu停止完成 */
 	while (num_other_online_cpus() && timeout--)
 		udelay(1);
 
+	/* cpu stop失败，打印警告信息 */
 	if (num_other_online_cpus())
 		pr_warn("SMP: failed to stop secondary CPUs %*pbl\n",
 			cpumask_pr_args(cpu_online_mask));
 
+	/* ??? */
 	sdei_mask_local_cpu();
 }
 
@@ -1078,19 +1146,24 @@ void crash_smp_send_stop(void)
 		return;
 	}
 
+	/* 向除本cpu之外的cpu，发送ipi */
 	cpumask_copy(&mask, cpu_online_mask);
 	cpumask_clear_cpu(smp_processor_id(), &mask);
 
+	/* 需要等待的complete数量 */
 	atomic_set(&waiting_for_crash_ipi, num_other_online_cpus());
 
 	pr_crit("SMP: stopping secondary CPUs\n");
+	/* 停止其它cpu */
 	smp_cross_call(&mask, IPI_CPU_CRASH_STOP);
 
 	/* Wait up to one second for other CPUs to stop */
 	timeout = USEC_PER_SEC;
+	/* 等待cpu停止操作完成 */
 	while ((atomic_read(&waiting_for_crash_ipi) > 0) && timeout--)
 		udelay(1);
 
+	/* 停止失败 */
 	if (atomic_read(&waiting_for_crash_ipi) > 0)
 		pr_warn("SMP: failed to stop secondary CPUs %*pbl\n",
 			cpumask_pr_args(&mask));
@@ -1098,6 +1171,7 @@ void crash_smp_send_stop(void)
 	sdei_mask_local_cpu();
 }
 
+/* 获取cpu停止是否失败状态 */
 bool smp_crash_stop_failed(void)
 {
 	return (atomic_read(&waiting_for_crash_ipi) > 0);
@@ -1112,6 +1186,7 @@ int setup_profiling_timer(unsigned int multiplier)
 	return -EINVAL;
 }
 
+/* 是否含有cpu die回调 */
 static bool have_cpu_die(void)
 {
 #ifdef CONFIG_HOTPLUG_CPU
@@ -1124,6 +1199,7 @@ static bool have_cpu_die(void)
 	return false;
 }
 
+/* cpu是否在内核stuck */
 bool cpus_are_stuck_in_kernel(void)
 {
 	bool smp_spin_tables = (num_possible_cpus() > 1 && !have_cpu_die());

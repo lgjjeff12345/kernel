@@ -472,6 +472,7 @@ void vmem_altmap_free(struct vmem_altmap *altmap, unsigned long nr_pfns)
  * If @pgmap is non-NULL and covers @pfn it will be returned as-is.  If @pgmap
  * is non-NULL but does not cover @pfn the reference to it will be released.
  */
+/* 获取设备page map */
 struct dev_pagemap *get_dev_pagemap(unsigned long pfn,
 		struct dev_pagemap *pgmap)
 {

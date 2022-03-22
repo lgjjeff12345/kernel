@@ -50,6 +50,7 @@ EXPORT_SYMBOL_GPL(timerqueue_add);
  * Removes the timer node from the timerqueue. Returns true if the queue is
  * not empty after the remove.
  */
+/* 从红黑树中删除timer */
 bool timerqueue_del(struct timerqueue_head *head, struct timerqueue_node *node)
 {
 	WARN_ON_ONCE(RB_EMPTY_NODE(&node->node));

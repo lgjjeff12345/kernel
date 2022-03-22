@@ -505,7 +505,9 @@ struct sched_rt_entity {
 	unsigned long			timeout;
 	unsigned long			watchdog_stamp;
 	unsigned int			time_slice;
+	/* 该调度实体已加入rq */
 	unsigned short			on_rq;
+	/* 该调度实体已加入优先级队列 */
 	unsigned short			on_list;
 
 	struct sched_rt_entity		*back;
@@ -526,10 +528,15 @@ struct sched_dl_entity {
 	 * during sched_setattr(), they will remain the same until
 	 * the next sched_setattr().
 	 */
+	/* 每个实例的最大运行时间 */
 	u64				dl_runtime;	/* Maximum runtime for each instance	*/
+	/* 每个实例的相对deadline */
 	u64				dl_deadline;	/* Relative deadline of each instance	*/
+	/* deadline周期 */
 	u64				dl_period;	/* Separation of two instances (period) */
+	/* 带宽：最大运行时间与周期的比值 */
 	u64				dl_bw;		/* dl_runtime / dl_period		*/
+	/* 密度：运行时间与deadline的比值 */
 	u64				dl_density;	/* dl_runtime / dl_deadline		*/
 
 	/*
@@ -537,7 +544,9 @@ struct sched_dl_entity {
 	 * they are continuously updated during task execution. Note that
 	 * the remaining runtime could be < 0 in case we are in overrun.
 	 */
+	/* 该实例中剩余的运行时间 */
 	s64				runtime;	/* Remaining runtime for this instance	*/
+	/* 该实例的绝对deadline */
 	u64				deadline;	/* Absolute deadline for this instance	*/
 	unsigned int			flags;		/* Specifying the scheduler behaviour	*/
 
@@ -565,15 +574,25 @@ struct sched_dl_entity {
 	 * @dl_overrun tells if the task asked to be informed about runtime
 	 * overruns.
 	 */
+	/* 指示调度实体是否已经超过给定运行时间，若达到则需要等待下一次dl_timer
+       触发后，再继续执行
+	*/
 	unsigned int			dl_throttled      : 1;
+	/* 指示任务是否在消耗完其运行时间之前放弃cpu */
 	unsigned int			dl_yielded        : 1;
+	/* 指示任务是否处于非活动状态，同时仍对活动利用率有贡献。换句话说，
+	   它指示非活动计时器是否已启用，其处理程序是否尚未执行。此标志有助
+	   于避免非活动计时器处理程序和唤醒代码之间的竞争条件 
+	*/
 	unsigned int			dl_non_contending : 1;
+	/* 指示是否任务要求通知运行时溢出 */
 	unsigned int			dl_overrun	  : 1;
 
 	/*
 	 * Bandwidth enforcement timer. Each -deadline task has its
 	 * own bandwidth to be enforced, thus we need one timer per task.
 	 */
+	/* 每个deadline任务都有其自身的bandwidth，因此每个任务都需要一个timer */
 	struct hrtimer			dl_timer;
 
 	/*
@@ -583,6 +602,7 @@ struct sched_dl_entity {
 	 * timer is needed to decrease the active utilization at the correct
 	 * time.
 	 */
+	/* 负责在0-lag time时减少活动利用率 */
 	struct hrtimer inactive_timer;
 
 #ifdef CONFIG_RT_MUTEXES
@@ -591,6 +611,9 @@ struct sched_dl_entity {
 	 * pi_se points to the donor, otherwise points to the dl_se it belongs
 	 * to (the original one/itself).
 	 */
+	/* 优先级继承，若一个deadline调度实体被boosted，pi_se指向其donor。
+       否则，其将会指向其所属的dl_se（即其自身）
+	*/
 	struct sched_dl_entity *pi_se;
 #endif
 };
@@ -699,10 +722,12 @@ struct task_struct {
 	 * used CPU that may be idle.
 	 */
 	int				recent_used_cpu;
+	/* 唤醒时该任务将被调度到的cpu */
 	int				wake_cpu;
 #endif
 	int				on_rq;
 
+	/* 动态优先级 */
 	int				prio;
 	int				static_prio;
 	int				normal_prio;
@@ -1435,6 +1460,7 @@ static inline struct pid *task_pid(struct task_struct *task)
  */
 pid_t __task_pid_nr_ns(struct task_struct *task, enum pid_type type, struct pid_namespace *ns);
 
+/* 获取进程的pid */
 static inline pid_t task_pid_nr(struct task_struct *tsk)
 {
 	return tsk->pid;

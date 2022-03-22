@@ -32,6 +32,7 @@ static DEFINE_PER_CPU(struct cpuidle_driver *, cpuidle_drivers);
  * Returns a pointer to struct cpuidle_driver or NULL if no driver has been
  * registered for @cpu.
  */
+/* 获取本cpu对应的驱动 */
 static struct cpuidle_driver *__cpuidle_get_cpu_driver(int cpu)
 {
 	return per_cpu(cpuidle_drivers, cpu);
@@ -94,6 +95,7 @@ static struct cpuidle_driver *cpuidle_curr_driver;
  * Return a pointer to a struct cpuidle_driver object or NULL if no driver was
  * previously registered.
  */
+/* 所有cpu共用cpuidle驱动 */
 static inline struct cpuidle_driver *__cpuidle_get_cpu_driver(int cpu)
 {
 	return cpuidle_curr_driver;
@@ -261,6 +263,7 @@ static void __cpuidle_unregister_driver(struct cpuidle_driver *drv)
  * Returns 0 on success, a negative error code (returned by
  * __cpuidle_register_driver()) otherwise.
  */
+/* 注册cpuidle驱动 */
 int cpuidle_register_driver(struct cpuidle_driver *drv)
 {
 	struct cpuidle_governor *gov;
@@ -273,6 +276,7 @@ int cpuidle_register_driver(struct cpuidle_driver *drv)
 	if (!ret && !strlen(param_governor) && drv->governor &&
 	    (cpuidle_get_driver() == drv)) {
 		mutex_lock(&cpuidle_lock);
+		/* 查找cpuidle governor */
 		gov = cpuidle_find_governor(drv->governor);
 		if (gov) {
 			cpuidle_prev_governor = cpuidle_curr_governor;
@@ -319,12 +323,15 @@ EXPORT_SYMBOL_GPL(cpuidle_unregister_driver);
  *
  * Returns a struct cpuidle_driver pointer, or NULL if no driver is registered.
  */
+/* 返回与当前cpu绑定的驱动 */
 struct cpuidle_driver *cpuidle_get_driver(void)
 {
 	struct cpuidle_driver *drv;
 	int cpu;
 
+	/* 获取当前cpu id */
 	cpu = get_cpu();
+	/* 获取cpu id对应的cpuidle驱动 */
 	drv = __cpuidle_get_cpu_driver(cpu);
 	put_cpu();
 
@@ -339,6 +346,7 @@ EXPORT_SYMBOL_GPL(cpuidle_get_driver);
  * Returns a struct cpuidle_driver pointer, or NULL if no driver is registered
  * for the CPU associated with @dev.
  */
+/* 获取cpuidle设备对应的驱动 */
 struct cpuidle_driver *cpuidle_get_cpu_driver(struct cpuidle_device *dev)
 {
 	if (!dev)

@@ -126,8 +126,10 @@ EXPORT_SYMBOL_GPL(pm_runtime_suspended_time);
  * pm_runtime_deactivate_timer - Deactivate given device's suspend timer.
  * @dev: Device to handle.
  */
+/* Deactivate给定设备的suspend定时器 */
 static void pm_runtime_deactivate_timer(struct device *dev)
 {
+	/* 若timer的超时时间大于0，则取消suspend定时器 */
 	if (dev->power.timer_expires > 0) {
 		hrtimer_try_to_cancel(&dev->power.suspend_timer);
 		dev->power.timer_expires = 0;
@@ -730,6 +732,15 @@ static int rpm_suspend(struct device *dev, int rpmflags)
  *
  * This function must be called under dev->power.lock with interrupts disabled.
  */
+/* 执行给定设备的runtime resume操作
+   检查该设备的运行时PM状态是否允许其被resumed。取消任何scheduled或pending
+   请求。若先前有其它的resume被启动，则取决于RPM_NOWAIT和RPM_ASYNC标志，要么
+   马上返回，要么等待其完成。
+   同样地，若suspend与该函数并行，则要么通知其它进程在suspend之后执行resume，
+   要么等待其完成。
+   若设置了RPM_ASYNC标志，则向queue设置一个resume请求，否则，直接运行runtime_resume
+   回调。若resume完成，则向该设备入队一个idke通知
+*/
 static int rpm_resume(struct device *dev, int rpmflags)
 	__releases(&dev->power.lock) __acquires(&dev->power.lock)
 {
@@ -757,6 +768,7 @@ static int rpm_resume(struct device *dev, int rpmflags)
 	 * future.
 	 */
 	dev->power.request = RPM_REQ_NONE;
+	/* 不是autosuspends，则deactivate定时器，即取消suspend定时器 */
 	if (!dev->power.timer_autosuspends)
 		pm_runtime_deactivate_timer(dev);
 
@@ -1093,6 +1105,7 @@ EXPORT_SYMBOL_GPL(__pm_runtime_suspend);
  * This routine may be called in atomic context if the RPM_ASYNC flag is set,
  * or if pm_runtime_irq_safe() has been called.
  */
+/* 运行时resume操作入口 */
 int __pm_runtime_resume(struct device *dev, int rpmflags)
 {
 	unsigned long flags;
@@ -1101,6 +1114,7 @@ int __pm_runtime_resume(struct device *dev, int rpmflags)
 	might_sleep_if(!(rpmflags & RPM_ASYNC) && !dev->power.irq_safe &&
 			dev->power.runtime_status != RPM_ACTIVE);
 
+	/* 增加power的引用计数 */
 	if (rpmflags & RPM_GET_PUT)
 		atomic_inc(&dev->power.usage_count);
 

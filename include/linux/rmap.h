@@ -27,6 +27,7 @@
  * pointing to this anon_vma once its vma list is empty.
  */
 struct anon_vma {
+	/* 该匿名vma树的根节点 */
 	struct anon_vma *root;		/* Root of this anon_vma tree */
 	struct rw_semaphore rwsem;	/* W: modification, R: walking the list */
 	/*
@@ -46,6 +47,7 @@ struct anon_vma {
 	 */
 	unsigned degree;
 
+	/* 父匿名vma */
 	struct anon_vma *parent;	/* Parent of this anon_vma */
 
 	/*

@@ -52,6 +52,7 @@ static const struct cpu_operations * __init cpu_get_ops(const char *name)
 	return NULL;
 }
 
+/* 从device tree中读取cpu的enable method */
 static const char *__init cpu_read_enable_method(int cpu)
 {
 	const char *enable_method;
@@ -65,6 +66,7 @@ static const char *__init cpu_read_enable_method(int cpu)
 			return NULL;
 		}
 
+		/* 读取该cpu的enable-method */
 		enable_method = of_get_property(dn, "enable-method", NULL);
 		if (!enable_method) {
 			/*
@@ -96,6 +98,7 @@ static const char *__init cpu_read_enable_method(int cpu)
 /*
  * Read a cpu's enable method and record it in cpu_ops.
  */
+/* 初始化boot cpu操作，读取cpu的使能method，并记录其cpu ops */
 int __init init_cpu_ops(int cpu)
 {
 	const char *enable_method = cpu_read_enable_method(cpu);
@@ -103,6 +106,7 @@ int __init init_cpu_ops(int cpu)
 	if (!enable_method)
 		return -ENODEV;
 
+	/* 根据cpu的enable method，获取其操作函数 */
 	cpu_ops[cpu] = cpu_get_ops(enable_method);
 	if (!cpu_ops[cpu]) {
 		pr_warn("Unsupported enable-method: %s\n", enable_method);
@@ -112,6 +116,7 @@ int __init init_cpu_ops(int cpu)
 	return 0;
 }
 
+/* 获取该cpu的操作函数 */
 const struct cpu_operations *get_cpu_ops(int cpu)
 {
 	return cpu_ops[cpu];

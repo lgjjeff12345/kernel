@@ -143,6 +143,7 @@ static inline void finalize_system_capabilities(void)
 	static_branch_enable(&arm64_const_caps_ready);
 }
 
+/* dump cpu feature信息 */
 void dump_cpu_features(void)
 {
 	/* file-wide pr_fmt adds "CPU features: " prefix */

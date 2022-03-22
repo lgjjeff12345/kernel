@@ -3530,6 +3530,7 @@ struct swap_info_struct *page_swap_info(struct page *page)
 /*
  * out-of-line __page_file_ methods to avoid include hell.
  */
+/* 该页被swap，则返回swap_file的f_mapping */
 struct address_space *__page_file_mapping(struct page *page)
 {
 	return page_swap_info(page)->swap_file->f_mapping;

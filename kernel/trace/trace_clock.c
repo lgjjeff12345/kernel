@@ -29,6 +29,7 @@
  * Useful for tracing that does not cross to other CPUs nor
  * does it go through idle events.
  */
+/* 获取本地cpu的时间 */
 u64 notrace trace_clock_local(void)
 {
 	u64 clock;

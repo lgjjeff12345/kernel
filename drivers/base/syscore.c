@@ -18,6 +18,7 @@ static DEFINE_MUTEX(syscore_ops_lock);
  * register_syscore_ops - Register a set of system core operations.
  * @ops: System core operations to register.
  */
+/* 注册一组sys core操作，即将其挂到syscore_ops_list链表中 */
 void register_syscore_ops(struct syscore_ops *ops)
 {
 	mutex_lock(&syscore_ops_lock);
@@ -30,6 +31,7 @@ EXPORT_SYMBOL_GPL(register_syscore_ops);
  * unregister_syscore_ops - Unregister a set of system core operations.
  * @ops: System core operations to unregister.
  */
+/* 注销一组syscore操作，即将其从syscore_ops_list链表中删除 */
 void unregister_syscore_ops(struct syscore_ops *ops)
 {
 	mutex_lock(&syscore_ops_lock);
@@ -44,6 +46,7 @@ EXPORT_SYMBOL_GPL(unregister_syscore_ops);
  *
  * This function is executed with one CPU on-line and disabled interrupts.
  */
+/* 执行所有注册到syscore的suspend回调 */
 int syscore_suspend(void)
 {
 	struct syscore_ops *ops;
@@ -88,6 +91,7 @@ EXPORT_SYMBOL_GPL(syscore_suspend);
  *
  * This function is executed with one CPU on-line and disabled interrupts.
  */
+/* 执行所有注册到syscore的resume回调 */
 void syscore_resume(void)
 {
 	struct syscore_ops *ops;
@@ -111,6 +115,7 @@ EXPORT_SYMBOL_GPL(syscore_resume);
 /**
  * syscore_shutdown - Execute all the registered system core shutdown callbacks.
  */
+/* 执行所有注册到syscore的shutdown回调 */
 void syscore_shutdown(void)
 {
 	struct syscore_ops *ops;

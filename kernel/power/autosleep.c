@@ -22,8 +22,10 @@ static struct workqueue_struct *autosleep_wq;
  * if an auto_sleep cycle tries to freeze processes.
  */
 static DEFINE_MUTEX(autosleep_lock);
+/* autosleep唤醒源 */
 static struct wakeup_source *autosleep_ws;
 
+/* 试图suspend系统 */
 static void try_to_suspend(struct work_struct *work)
 {
 	unsigned int initial_count, final_count;
@@ -114,12 +116,15 @@ int pm_autosleep_set_state(suspend_state_t state)
 	return 0;
 }
 
+/* autosleep初始化 */
 int __init pm_autosleep_init(void)
 {
+	/* 注册autosleep唤醒源 */
 	autosleep_ws = wakeup_source_register(NULL, "autosleep");
 	if (!autosleep_ws)
 		return -ENOMEM;
 
+	/* 为autosleep分配一个有序的工作队列 */
 	autosleep_wq = alloc_ordered_workqueue("autosleep", 0);
 	if (autosleep_wq)
 		return 0;

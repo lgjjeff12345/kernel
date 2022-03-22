@@ -15,7 +15,9 @@
 
 typedef u64 async_cookie_t;
 typedef void (*async_func_t) (void *data, async_cookie_t cookie);
+/* async domain定义 */
 struct async_domain {
+	/* pending链表 */
 	struct list_head pending;
 	unsigned registered:1;
 };

@@ -158,6 +158,7 @@ void __thaw_task(struct task_struct *p)
  *
  * Mark %current freezable and enter refrigerator if necessary.
  */
+/* 将当前线程设置为可冻结的 */
 bool set_freezable(void)
 {
 	might_sleep();
@@ -167,6 +168,7 @@ bool set_freezable(void)
 	 * freezer notices that we aren't frozen yet or the freezing
 	 * condition is visible to try_to_freeze() below.
 	 */
+	/* 清除其PF_NOFREEZE标志 */
 	spin_lock_irq(&freezer_lock);
 	current->flags &= ~PF_NOFREEZE;
 	spin_unlock_irq(&freezer_lock);

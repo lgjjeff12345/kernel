@@ -446,6 +446,9 @@ EXPORT_SYMBOL(strchr);
  * Returns pointer to first occurrence of 'c' in s. If c is not found, then
  * return a pointer to the null byte at the end of s.
  */
+/* 从s字符串中查找字符c，若找到则返回指向c的指针，
+   否则返回null 
+*/
 char *strchrnul(const char *s, int c)
 {
 	while (*s && *s != (char)c)

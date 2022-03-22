@@ -400,8 +400,10 @@ asmlinkage void noinstr exit_to_user_mode(void)
 	lockdep_hardirqs_on(CALLER_ADDR0);
 }
 
+/* el0的数据abort异常 */
 static void noinstr el0_da(struct pt_regs *regs, unsigned long esr)
 {
+	/* 读取far */
 	unsigned long far = read_sysreg(far_el1);
 
 	enter_from_user_mode();
@@ -409,8 +411,10 @@ static void noinstr el0_da(struct pt_regs *regs, unsigned long esr)
 	do_mem_abort(far, esr, regs);
 }
 
+/* el0的指令abort异常 */
 static void noinstr el0_ia(struct pt_regs *regs, unsigned long esr)
 {
+	/* 读取far */
 	unsigned long far = read_sysreg(far_el1);
 
 	/*
@@ -447,6 +451,10 @@ static void noinstr el0_fpsimd_exc(struct pt_regs *regs, unsigned long esr)
 	do_fpsimd_exc(esr, regs);
 }
 
+/* 用户态执行硬件相关的系统操作，
+   如：el0 cache操作，读CTR_EL0寄存器，读CNTVCT寄存器，
+   读CNTFRQ寄存器，访问CPUID寄存器，触发WFI指令等
+*/
 static void noinstr el0_sys(struct pt_regs *regs, unsigned long esr)
 {
 	enter_from_user_mode();

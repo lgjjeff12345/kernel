@@ -16,6 +16,10 @@
 
 struct device;
 
+/* 设备属性类型
+   DEV_PROP_U8：8位属性
+   DEV_PROP_STRING：字符串属性
+*/
 enum dev_prop_type {
 	DEV_PROP_U8,
 	DEV_PROP_U16,
@@ -25,6 +29,8 @@ enum dev_prop_type {
 	DEV_PROP_REF,
 };
 
+/* 设备的dma属性
+*/
 enum dev_dma_attr {
 	DEV_DMA_NOT_SUPPORTED,
 	DEV_DMA_NON_COHERENT,

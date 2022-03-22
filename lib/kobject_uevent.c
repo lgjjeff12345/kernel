@@ -454,6 +454,7 @@ static void zap_modalias_env(struct kobj_uevent_env *env)
  * Returns 0 if kobject_uevent_env() is completed with success or the
  * corresponding error when it fails.
  */
+/* 发送一个uevent事件 */
 int kobject_uevent_env(struct kobject *kobj, enum kobject_action action,
 		       char *envp_ext[])
 {
@@ -651,6 +652,7 @@ EXPORT_SYMBOL_GPL(kobject_uevent);
  * Returns 0 if environment variable was added successfully or -ENOMEM
  * if no space was available.
  */
+/* 向环境buffer中添加key值 */
 int add_uevent_var(struct kobj_uevent_env *env, const char *format, ...)
 {
 	va_list args;
@@ -754,6 +756,7 @@ static void uevent_net_rcv(struct sk_buff *skb)
 	netlink_rcv_skb(skb, &uevent_net_rcv_skb);
 }
 
+/* 初始化uevent */
 static int uevent_net_init(struct net *net)
 {
 	struct uevent_sock *ue_sk;
@@ -767,6 +770,7 @@ static int uevent_net_init(struct net *net)
 	if (!ue_sk)
 		return -ENOMEM;
 
+	/* 创建一个netlink socket */
 	ue_sk->sk = netlink_kernel_create(net, NETLINK_KOBJECT_UEVENT, &cfg);
 	if (!ue_sk->sk) {
 		pr_err("kobject_uevent: unable to create netlink socket!\n");

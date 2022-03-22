@@ -806,6 +806,7 @@ void __enable_irq(struct irq_desc *desc)
  *	This function may be called from IRQ context only when
  *	desc->irq_data.chip->bus_lock and desc->chip->bus_sync_unlock are NULL !
  */
+/* 使能一个中断 */
 void enable_irq(unsigned int irq)
 {
 	unsigned long flags;
@@ -817,6 +818,7 @@ void enable_irq(unsigned int irq)
 		 KERN_ERR "enable_irq before setup/request_irq: irq %u\n", irq))
 		goto out;
 
+	/* 使能一个中断 */
 	__enable_irq(desc);
 out:
 	irq_put_desc_busunlock(desc, flags);
@@ -837,6 +839,7 @@ void enable_nmi(unsigned int irq)
 	enable_irq(irq);
 }
 
+/* 设置中断的唤醒能力 */
 static int set_irq_wake_real(unsigned int irq, unsigned int on)
 {
 	struct irq_desc *desc = irq_to_desc(irq);
@@ -845,6 +848,7 @@ static int set_irq_wake_real(unsigned int irq, unsigned int on)
 	if (irq_desc_get_chip(desc)->flags &  IRQCHIP_SKIP_SET_WAKE)
 		return 0;
 
+	/* 调用中断控制器的irq_set_wake接口 */
 	if (desc->irq_data.chip->irq_set_wake)
 		ret = desc->irq_data.chip->irq_set_wake(&desc->irq_data, on);
 
@@ -870,6 +874,19 @@ static int set_irq_wake_real(unsigned int irq, unsigned int on)
  *	then the underlying irq chip and the related driver need
  *	to be investigated.
  */
+/* 控制中断的电源管理唤醒
+   irq：中断号
+   on：使能/失能电源管理唤醒
+
+   使能/失能电源管理唤醒模式，默认情况其是关闭的。使能和失能必须
+   匹配，就像它们在非唤醒模式下支持的match一样。
+
+   唤醒模式中断将系统从睡眠状态（suspend to ram）唤醒。
+
+   中断的使能/失能状态与irq wake的使能和失能状态是正交的。一个中断
+   可以通过disable_irq关闭，但只要其irq wake使能，依然可以唤醒系统。
+   如果该条件不成立，需要检查中断控制器和与其相关的驱动
+*/
 int irq_set_irq_wake(unsigned int irq, unsigned int on)
 {
 	unsigned long flags;
@@ -880,6 +897,7 @@ int irq_set_irq_wake(unsigned int irq, unsigned int on)
 		return -EINVAL;
 
 	/* Don't use NMIs as wake up interrupts please */
+	/* 不能讲nmi作为唤醒中断 */
 	if (desc->istate & IRQS_NMI) {
 		ret = -EINVAL;
 		goto out_unlock;
@@ -888,7 +906,12 @@ int irq_set_irq_wake(unsigned int irq, unsigned int on)
 	/* wakeup-capable irqs can be shared between drivers that
 	 * don't need to have the same sleep mode behaviors.
 	 */
+	/* 具有唤醒能力的中断，可以在含有不同睡眠模式行为的驱动之间共享 */
 	if (on) {
+		/* 若使能嵌套，则只更新wake_depth计数
+           否则，调用实际的中断唤醒设置函数。若执行成功，则为该中断设置
+           IRQD_WAKEUP_STATE标志
+		*/
 		if (desc->wake_depth++ == 0) {
 			ret = set_irq_wake_real(irq, on);
 			if (ret)
@@ -897,6 +920,10 @@ int irq_set_irq_wake(unsigned int irq, unsigned int on)
 				irqd_set(&desc->irq_data, IRQD_WAKEUP_STATE);
 		}
 	} else {
+		/* 若失能嵌套，则只更新wake_depth计数
+		否则，调用实际的中断唤醒设置函数。若执行成功，则为该中断清除
+		IRQD_WAKEUP_STATE标志
+		*/
 		if (desc->wake_depth == 0) {
 			WARN(1, "Unbalanced IRQ %d wake disable\n", irq);
 		} else if (--desc->wake_depth == 0) {
@@ -2338,6 +2365,7 @@ err_out:
 	return retval;
 }
 
+/* 使能percpu的irq */
 void enable_percpu_irq(unsigned int irq, unsigned int type)
 {
 	unsigned int cpu = smp_processor_id();
@@ -2402,6 +2430,7 @@ bool irq_percpu_is_enabled(unsigned int irq)
 }
 EXPORT_SYMBOL_GPL(irq_percpu_is_enabled);
 
+/* 关闭给定中断号的ppi */
 void disable_percpu_irq(unsigned int irq)
 {
 	unsigned int cpu = smp_processor_id();

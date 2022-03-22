@@ -39,6 +39,7 @@ long sysfs_deprecated = 1;
 #else
 long sysfs_deprecated = 0;
 #endif
+/* 可以通过参数sysfs.deprecated改变sysfs_deprecated的值 */
 static int __init sysfs_deprecated_setup(char *arg)
 {
 	return kstrtol(arg, 10, &sysfs_deprecated);
@@ -70,6 +71,16 @@ static bool fw_devlink_drv_reg_done;
  * Attempts to create duplicate links between the same pair of fwnode handles
  * are ignored and there is no reference counting.
  */
+/* 创建一个在fwnode_handles之间的link
+   con：该link的consumer端
+   sup：该link的supplier端
+
+   fwnode link表示firmware链表sup fwnode为con节点提供资源。driver core将在con和sup
+   两个设备创建时，使用fwnode以创建一个在它们之间的设备链接。
+   在执行完之后，driver core将自动地删除在con和sup之间的fwnode。
+   在相同的fwnode handles对之间创建重复的links将会被忽略，且不会增加引用计数
+   
+*/
 int fwnode_link_add(struct fwnode_handle *con, struct fwnode_handle *sup)
 {
 	struct fwnode_link *link;
@@ -77,21 +88,29 @@ int fwnode_link_add(struct fwnode_handle *con, struct fwnode_handle *sup)
 
 	mutex_lock(&fwnode_link_lock);
 
+	/* 遍历supplier的consumer链表
+       若该consumer已被注册，则直接返回
+	*/
 	list_for_each_entry(link, &sup->consumers, s_hook)
 		if (link->consumer == con)
 			goto out;
 
+	/* 分配一个link结构体 */
 	link = kzalloc(sizeof(*link), GFP_KERNEL);
 	if (!link) {
 		ret = -ENOMEM;
 		goto out;
 	}
 
+	/* 设置link结构体采纳数 */
 	link->supplier = sup;
 	INIT_LIST_HEAD(&link->s_hook);
 	link->consumer = con;
 	INIT_LIST_HEAD(&link->c_hook);
 
+	/* 将该link分别添加到supplier的consumers链表，
+       consumer的supplier链表中
+	*/
 	list_add(&link->s_hook, &sup->consumers);
 	list_add(&link->c_hook, &con->suppliers);
 out:
@@ -106,11 +125,13 @@ out:
  *
  * Deletes all supplier links connecting directly to @fwnode.
  */
+/* 删除所有fwnode_handle的supplier */
 static void fwnode_links_purge_suppliers(struct fwnode_handle *fwnode)
 {
 	struct fwnode_link *link, *tmp;
 
 	mutex_lock(&fwnode_link_lock);
+	/* 遍历该fwnode的所有supplier，并删除其link */
 	list_for_each_entry_safe(link, tmp, &fwnode->suppliers, c_hook) {
 		list_del(&link->s_hook);
 		list_del(&link->c_hook);
@@ -125,6 +146,7 @@ static void fwnode_links_purge_suppliers(struct fwnode_handle *fwnode)
  *
  * Deletes all consumer links connecting directly to @fwnode.
  */
+/* 删除所有fwnode_handle的consumer */
 static void fwnode_links_purge_consumers(struct fwnode_handle *fwnode)
 {
 	struct fwnode_link *link, *tmp;
@@ -144,6 +166,7 @@ static void fwnode_links_purge_consumers(struct fwnode_handle *fwnode)
  *
  * Deletes all links connecting directly to a fwnode.
  */
+/* 删除所有连接到fwnode的links */
 void fwnode_links_purge(struct fwnode_handle *fwnode)
 {
 	fwnode_links_purge_suppliers(fwnode);
@@ -265,6 +288,7 @@ static bool device_is_ancestor(struct device *dev, struct device *target)
  * Check if @target depends on @dev or any device dependent on it (its child or
  * its consumer etc).  Return 1 if that is the case or 0 otherwise.
  */
+/* 检查一个设备是否与另一个设备有依赖关系 */
 int device_is_dependent(struct device *dev, void *target)
 {
 	struct device_link *link;
@@ -627,7 +651,7 @@ postcore_initcall(devlink_class_init);
  * be forced into the active meta state and reference-counted upon the creation
  * of the link.  If DL_FLAG_PM_RUNTIME is not set, DL_FLAG_RPM_ACTIVE will be
  * ignored.
- *
+ *   
  * If DL_FLAG_STATELESS is set in @flags, the caller of this function is
  * expected to release the link returned by it directly with the help of either
  * device_link_del() or device_link_remove().
@@ -670,6 +694,21 @@ postcore_initcall(devlink_class_init);
  * and NULL will be returned if that is not the case.  The consumer device need
  * not be registered, however.
  */
+/* 创建一个两个设备之间的link
+   调用者需要负责link创建及runtime PM的正确同步。设置DL_FLAG_PM_RUNTIME标志，
+会导致runtime PM框架考虑这个link。若额外设置了DL_FLAG_RPM_ACTIVE标志，supplier
+设备将强制进入active meta状态，并在创建link时计算引用计数。若DL_FLAG_PM_RUNTIME
+被设置，DL_FLAG_RPM_ACTIVE将会被忽略。
+
+   若设置了DL_FLAG_STATELESS标志，函数的调用者可以通过device_link_del（）或
+device_link_remove（）直接释放它返回的链接。
+
+   link创建的作用是通过将consumer设备和所以依赖于它的设备移到这些链表的结尾，以重新
+排序dpm_list和devices_kset链表。
+
+   本函数被调用时supplier设备需要已经注册完成，否则将会返回NULL。consumer设备不需要
+注册完成。
+*/
 struct device_link *device_link_add(struct device *consumer,
 				    struct device *supplier, u32 flags)
 {
@@ -1429,6 +1468,7 @@ void device_links_driver_cleanup(struct device *dev)
  *
  * Links without the DL_FLAG_MANAGED flag set are ignored.
  */
+/* 检查对consumers是否有busy links */
 bool device_links_busy(struct device *dev)
 {
 	struct device_link *link;
@@ -1436,6 +1476,7 @@ bool device_links_busy(struct device *dev)
 
 	device_links_write_lock();
 
+	/* 遍历设备的consumers链表 */
 	list_for_each_entry(link, &dev->links.consumers, s_node) {
 		if (!(link->flags & DL_FLAG_MANAGED))
 			continue;
@@ -2166,6 +2207,7 @@ EXPORT_SYMBOL_GPL(device_show_bool);
  * reaches 0. We forward the call to the device's release
  * method, which should handle actually freeing the structure.
  */
+/* device结构的free函数 */
 static void device_release(struct kobject *kobj)
 {
 	struct device *dev = kobj_to_dev(kobj);
@@ -2180,10 +2222,14 @@ static void device_release(struct kobject *kobj)
 	 * is deleted but alive, so release devres here to avoid
 	 * possible memory leak.
 	 */
+	/* 释放所有的设备资源 */
 	devres_release_all(dev);
 
 	kfree(dev->dma_range_map);
 
+	/* 调用设备的release接口，若不存在则调用设备的type->release接口，
+       若不存在，则调用设备的class->dev_release接口
+	*/
 	if (dev->release)
 		dev->release(dev);
 	else if (dev->type && dev->type->release)
@@ -2196,17 +2242,22 @@ static void device_release(struct kobject *kobj)
 	kfree(p);
 }
 
+/* 获取设备的namespace */
 static const void *device_namespace(struct kobject *kobj)
 {
 	struct device *dev = kobj_to_dev(kobj);
 	const void *ns = NULL;
 
+	/* 若设备的class的ns_type存在，则调用其class->namespace接口，
+       获取其namespace
+	*/
 	if (dev->class && dev->class->ns_type)
 		ns = dev->class->namespace(dev);
 
 	return ns;
 }
 
+/* 获取class的属主 */
 static void device_get_ownership(struct kobject *kobj, kuid_t *uid, kgid_t *gid)
 {
 	struct device *dev = kobj_to_dev(kobj);
@@ -2215,6 +2266,7 @@ static void device_get_ownership(struct kobject *kobj, kuid_t *uid, kgid_t *gid)
 		dev->class->get_ownership(dev, uid, gid);
 }
 
+/* device的ktype */
 static struct kobj_type device_ktype = {
 	.release	= device_release,
 	.sysfs_ops	= &dev_sysfs_ops,
@@ -2222,11 +2274,12 @@ static struct kobj_type device_ktype = {
 	.get_ownership	= device_get_ownership,
 };
 
-
+/* 过滤uevent */
 static int dev_uevent_filter(struct kset *kset, struct kobject *kobj)
 {
 	struct kobj_type *ktype = get_ktype(kobj);
 
+	/* 若其ktype匹配，且该设备的bus或class存在，则返回1,。否则，返回0 */
 	if (ktype == &device_ktype) {
 		struct device *dev = kobj_to_dev(kobj);
 		if (dev->bus)
@@ -2237,10 +2290,12 @@ static int dev_uevent_filter(struct kset *kset, struct kobject *kobj)
 	return 0;
 }
 
+/* 获取设备的uevent名 */
 static const char *dev_uevent_name(struct kset *kset, struct kobject *kobj)
 {
 	struct device *dev = kobj_to_dev(kobj);
 
+	/* 返回bus名或class名 */
 	if (dev->bus)
 		return dev->bus->name;
 	if (dev->class)
@@ -2248,9 +2303,11 @@ static const char *dev_uevent_name(struct kset *kset, struct kobject *kobj)
 	return NULL;
 }
 
+/* 设备的uevent接口 */
 static int dev_uevent(struct kset *kset, struct kobject *kobj,
 		      struct kobj_uevent_env *env)
 {
+	/* 获取设备结构体 */
 	struct device *dev = kobj_to_dev(kobj);
 	int retval = 0;
 
@@ -2259,9 +2316,18 @@ static int dev_uevent(struct kset *kset, struct kobject *kobj,
 		const char *tmp;
 		const char *name;
 		umode_t mode = 0;
+		/* root uid/gid分别为0 */
 		kuid_t uid = GLOBAL_ROOT_UID;
 		kgid_t gid = GLOBAL_ROOT_GID;
 
+		/* 向环境变量中添加以下信息：
+           MAJOR=xxx
+           MINOR=xxx
+           DEVNAME=xxx
+           DEVMODE==xxx
+           DEVUID=xxx
+           DEVGID=xxx
+		*/
 		add_uevent_var(env, "MAJOR=%u", MAJOR(dev->devt));
 		add_uevent_var(env, "MINOR=%u", MINOR(dev->devt));
 		name = device_get_devnode(dev, &mode, &uid, &gid, &tmp);
@@ -2277,6 +2343,10 @@ static int dev_uevent(struct kset *kset, struct kobject *kobj,
 		}
 	}
 
+	/* 向环境变量中添加
+       DEVTYPE=xxx
+       DRIVER=xxx
+	*/
 	if (dev->type && dev->type->name)
 		add_uevent_var(env, "DEVTYPE=%s", dev->type->name);
 
@@ -2284,9 +2354,11 @@ static int dev_uevent(struct kset *kset, struct kobject *kobj,
 		add_uevent_var(env, "DRIVER=%s", dev->driver->name);
 
 	/* Add common DT information about the device */
+	/* 向环境变量添加dt相关的信息 */
 	of_device_uevent(dev, env);
 
 	/* have the bus specific function add its stuff */
+	/* 调用总线的uevent回调 */
 	if (dev->bus && dev->bus->uevent) {
 		retval = dev->bus->uevent(dev, env);
 		if (retval)
@@ -2295,6 +2367,7 @@ static int dev_uevent(struct kset *kset, struct kobject *kobj,
 	}
 
 	/* have the class specific function add its stuff */
+	/* 调用class的uevent回调 */
 	if (dev->class && dev->class->dev_uevent) {
 		retval = dev->class->dev_uevent(dev, env);
 		if (retval)
@@ -2304,6 +2377,7 @@ static int dev_uevent(struct kset *kset, struct kobject *kobj,
 	}
 
 	/* have the device type specific function add its stuff */
+	/* 调用type的uevent回调 */
 	if (dev->type && dev->type->uevent) {
 		retval = dev->type->uevent(dev, env);
 		if (retval)
@@ -2315,6 +2389,7 @@ static int dev_uevent(struct kset *kset, struct kobject *kobj,
 	return retval;
 }
 
+/* kset的uevent操作函数 */
 static const struct kset_uevent_ops device_uevent_ops = {
 	.filter =	dev_uevent_filter,
 	.name =		dev_uevent_name,
@@ -2380,6 +2455,7 @@ static ssize_t uevent_store(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR_RW(uevent);
 
+/* 显示设备是否online */
 static ssize_t online_show(struct device *dev, struct device_attribute *attr,
 			   char *buf)
 {
@@ -2391,6 +2467,7 @@ static ssize_t online_show(struct device *dev, struct device_attribute *attr,
 	return sysfs_emit(buf, "%u\n", val);
 }
 
+/* 将设备online或者offline */
 static ssize_t online_store(struct device *dev, struct device_attribute *attr,
 			    const char *buf, size_t count)
 {
@@ -2411,6 +2488,7 @@ static ssize_t online_store(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR_RW(online);
 
+/* 获取设备是否可移除 */
 static ssize_t removable_show(struct device *dev, struct device_attribute *attr,
 			      char *buf)
 {
@@ -2663,6 +2741,7 @@ struct kset *devices_kset;
  * @deva: Device to move.
  * @devb: Device @deva should come before.
  */
+/* 移动设备节点在kset链表中的位置 */
 static void devices_kset_move_before(struct device *deva, struct device *devb)
 {
 	if (!devices_kset)
@@ -2822,6 +2901,7 @@ static void klist_children_put(struct klist_node *n)
  * NOTE: Use put_device() to give up your reference instead of freeing
  * @dev directly once you have called this function.
  */
+/* 初始化设备结构体 */
 void device_initialize(struct device *dev)
 {
 	dev->kobj.kset = devices_kset;
@@ -2833,12 +2913,16 @@ void device_initialize(struct device *dev)
 #endif
 	lockdep_set_novalidate_class(&dev->mutex);
 	spin_lock_init(&dev->devres_lock);
+	/* 初始化设备资源链表 */
 	INIT_LIST_HEAD(&dev->devres_head);
+	/* 初始化设备的pm */
 	device_pm_init(dev);
+	/* 设置设备的numa节点 */
 	set_dev_node(dev, -1);
 #ifdef CONFIG_GENERIC_MSI_IRQ
 	INIT_LIST_HEAD(&dev->msi_list);
 #endif
+	/* 初始化其link的consumer、supplier和defer_sync链表节点 */
 	INIT_LIST_HEAD(&dev->links.consumers);
 	INIT_LIST_HEAD(&dev->links.suppliers);
 	INIT_LIST_HEAD(&dev->links.defer_sync);
@@ -3230,6 +3314,7 @@ static int device_private_init(struct device *dev)
  * *not* succeeded, use *only* put_device() to drop the reference
  * count.
  */
+/* 设备添加接口 */
 int device_add(struct device *dev)
 {
 	struct device *parent;
@@ -3625,12 +3710,14 @@ const char *device_get_devnode(struct device *dev,
 	*tmp = NULL;
 
 	/* the device type may provide a specific name */
+	/* 通过device type的devnode接口获取这些信息 */
 	if (dev->type && dev->type->devnode)
 		*tmp = dev->type->devnode(dev, mode, uid, gid);
 	if (*tmp)
 		return *tmp;
 
 	/* the class may provide a specific name */
+	/* 通过device class的devnode接口获取这些信息 */
 	if (dev->class && dev->class->devnode)
 		*tmp = dev->class->devnode(dev, mode);
 	if (*tmp)
@@ -3819,6 +3906,7 @@ static int device_check_offline(struct device *dev, void *not_used)
  *
  * Call under device_hotplug_lock.
  */
+/* 将设备设置为offline状态 */
 int device_offline(struct device *dev)
 {
 	int ret;
@@ -3831,6 +3919,9 @@ int device_offline(struct device *dev)
 		return ret;
 
 	device_lock(dev);
+	/* 若该设备支持offline操作，则调用该设备总线对应的offline回调。
+	   offline成功后，向uevent发送KOBJ_OFFLINE事件
+	*/
 	if (device_supports_offline(dev)) {
 		if (dev->offline) {
 			ret = 1;
@@ -3857,6 +3948,7 @@ int device_offline(struct device *dev)
  *
  * Call under device_hotplug_lock.
  */
+/* 调用该设备所在总线对应的online回调，并发送KOBJ_ONLINE uevent事件 */
 int device_online(struct device *dev)
 {
 	int ret = 0;
@@ -4427,13 +4519,21 @@ EXPORT_SYMBOL_GPL(device_change_owner);
 /**
  * device_shutdown - call ->shutdown() on each device to shutdown.
  */
+/* 关闭所有的设备 */
 void device_shutdown(void)
 {
 	struct device *dev, *parent;
 
+	/* 等待设备probe完成 */
 	wait_for_device_probe();
+	/* 阻塞所有设备的probe，
+       且等待正在probe的设备完成
+	*/
 	device_block_probing();
 
+	/* 挂起cpufreq governor，因为cpu调频可能依赖一些设备（如i2c，regulator），
+       因此在设备关闭之后不能执行cpu调频操作
+	*/
 	cpufreq_suspend();
 
 	spin_lock(&devices_kset->list_lock);
@@ -4442,7 +4542,12 @@ void device_shutdown(void)
 	 * Beware that device unplug events may also start pulling
 	 * devices offline, even as the system is shutting down.
 	 */
+	/*  遍历设备链表，并依次关闭它们
+        注意即使系统正在执行shut down时，设备的unplug事件也会
+        启动将设备offline的操作
+	*/
 	while (!list_empty(&devices_kset->list)) {
+		/* 获取设备节点 */
 		dev = list_entry(devices_kset->list.prev, struct device,
 				kobj.entry);
 
@@ -4457,6 +4562,7 @@ void device_shutdown(void)
 		 * Make sure the device is off the kset list, in the
 		 * event that dev->*->shutdown() doesn't remove it.
 		 */
+		/* 从devices_kset链表中删除该节点 */
 		list_del_init(&dev->kobj.entry);
 		spin_unlock(&devices_kset->list_lock);
 
@@ -4469,11 +4575,13 @@ void device_shutdown(void)
 		pm_runtime_get_noresume(dev);
 		pm_runtime_barrier(dev);
 
+		/* 调用该设备的shutdown_pre回调 */
 		if (dev->class && dev->class->shutdown_pre) {
 			if (initcall_debug)
 				dev_info(dev, "shutdown_pre\n");
 			dev->class->shutdown_pre(dev);
 		}
+		/* 调用该设备的总线shutdown回调，或驱动shutdown回调 */
 		if (dev->bus && dev->bus->shutdown) {
 			if (initcall_debug)
 				dev_info(dev, "shutdown\n");
@@ -4776,12 +4884,14 @@ int device_match_of_node(struct device *dev, const void *np)
 }
 EXPORT_SYMBOL_GPL(device_match_of_node);
 
+/* 该设备是否与给定fwnode匹配 */
 int device_match_fwnode(struct device *dev, const void *fwnode)
 {
 	return dev_fwnode(dev) == fwnode;
 }
 EXPORT_SYMBOL_GPL(device_match_fwnode);
 
+/* 该设备是否与给定devt匹配 */
 int device_match_devt(struct device *dev, const void *pdevt)
 {
 	return dev->devt == *(dev_t *)pdevt;

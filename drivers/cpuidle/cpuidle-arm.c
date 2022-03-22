@@ -141,6 +141,10 @@ out_kfree_drv:
  * to register cpuidle driver then rollback to cancel all CPUs
  * registeration.
  */
+/* 初始化arm cpuidle驱动
+   为所有的cpu初始化arm cpuidle驱动，若任一cpu注册cpuidle驱动失败，
+   则回滚以取消所有的cpuidle驱动注册
+*/
 static int __init arm_idle_init(void)
 {
 	int cpu, ret;

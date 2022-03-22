@@ -15,6 +15,7 @@
 
 static ATOMIC_NOTIFIER_HEAD(cpu_pm_notifier_chain);
 
+/* 调用所有cpu_pm_notifier_chain通知链上的回调 */
 static int cpu_pm_notify(enum cpu_pm_event event)
 {
 	int ret;
@@ -31,6 +32,7 @@ static int cpu_pm_notify(enum cpu_pm_event event)
 	return notifier_to_errno(ret);
 }
 
+/* 调用所有cpu_pm_notifier_chain通知链上的回调 */
 static int cpu_pm_notify_robust(enum cpu_pm_event event_up, enum cpu_pm_event event_down)
 {
 	int ret;
@@ -52,6 +54,7 @@ static int cpu_pm_notify_robust(enum cpu_pm_event event_up, enum cpu_pm_event ev
  * This function may sleep, and has the same return conditions as
  * raw_notifier_chain_register.
  */
+/* 驱动向cpu_pm_notifier_chain注册一个通知 */
 int cpu_pm_register_notifier(struct notifier_block *nb)
 {
 	return atomic_notifier_chain_register(&cpu_pm_notifier_chain, nb);
@@ -67,6 +70,7 @@ EXPORT_SYMBOL_GPL(cpu_pm_register_notifier);
  * This function may sleep, and has the same return conditions as
  * raw_notifier_chain_unregister.
  */
+/* 驱动从cpu_pm_notifier_chain删除一个通知 */
 int cpu_pm_unregister_notifier(struct notifier_block *nb)
 {
 	return atomic_notifier_chain_unregister(&cpu_pm_notifier_chain, nb);
@@ -88,6 +92,13 @@ EXPORT_SYMBOL_GPL(cpu_pm_unregister_notifier);
  *
  * Return conditions are same as __raw_notifier_call_chain.
  */
+/* pm low power入口的通知
+   通知listeners一个cpu正在进入低功耗状态，它可能会导致在同一个power domain的
+   模块模块reset。
+   该接口必须在受影响的cpu中断关闭情形下被调用。被通知的驱动可以包含VFP
+   协处理器，中断控制器和其PM扩展，local cpu定时器上下文save/restore不应该
+   被中断。因此，它必须在关中断的情形下被调用
+*/
 int cpu_pm_enter(void)
 {
 	return cpu_pm_notify_robust(CPU_PM_ENTER, CPU_PM_ENTER_FAILED);
@@ -106,8 +117,10 @@ EXPORT_SYMBOL_GPL(cpu_pm_enter);
  *
  * Return conditions are same as __raw_notifier_call_chain.
  */
+/* 调用cpu退出低功耗模式的通知回调 */
 int cpu_pm_exit(void)
 {
+	/* 调用所有cpu_pm_notifier_chain通知链上的回调 */
 	return cpu_pm_notify(CPU_PM_EXIT);
 }
 EXPORT_SYMBOL_GPL(cpu_pm_exit);
@@ -128,6 +141,7 @@ EXPORT_SYMBOL_GPL(cpu_pm_exit);
  *
  * Return conditions are same as __raw_notifier_call_chain.
  */
+/* 调用cluster进入低功耗的的通知 */
 int cpu_cluster_pm_enter(void)
 {
 	return cpu_pm_notify_robust(CPU_CLUSTER_PM_ENTER, CPU_CLUSTER_PM_ENTER_FAILED);
@@ -149,6 +163,7 @@ EXPORT_SYMBOL_GPL(cpu_cluster_pm_enter);
  *
  * Return conditions are same as __raw_notifier_call_chain.
  */
+ /* 调用cluster退出低功耗的的通知 */
 int cpu_cluster_pm_exit(void)
 {
 	return cpu_pm_notify(CPU_CLUSTER_PM_EXIT);
@@ -179,6 +194,7 @@ static struct syscore_ops cpu_pm_syscore_ops = {
 	.resume = cpu_pm_resume,
 };
 
+/* cpu的pm初始化函数 */
 static int cpu_pm_init(void)
 {
 	register_syscore_ops(&cpu_pm_syscore_ops);

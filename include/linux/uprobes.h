@@ -98,6 +98,7 @@ enum rp_check {
 
 struct xol_area;
 
+/* uprobe状态 */
 struct uprobes_state {
 	struct xol_area		*xol_area;
 };

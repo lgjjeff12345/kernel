@@ -321,6 +321,7 @@ extern int copy_regset_to_user(struct task_struct *target,
  * @size:	amount of data to copy, in bytes
  * @data:	user-mode pointer to copy from
  */
+/* 将来自用户地址空间的数据保存到线程的user_regset中 */
 static inline int copy_regset_from_user(struct task_struct *target,
 					const struct user_regset_view *view,
 					unsigned int setno,

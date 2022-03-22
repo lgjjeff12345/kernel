@@ -57,7 +57,9 @@ static inline void set_max_mapnr(unsigned long limit)
 static inline void set_max_mapnr(unsigned long limit) { }
 #endif
 
+/* 总的ram size */
 extern atomic_long_t _totalram_pages;
+/* 总的ram页面 */
 static inline unsigned long totalram_pages(void)
 {
 	return (unsigned long)atomic_long_read(&_totalram_pages);
@@ -73,6 +75,7 @@ static inline void totalram_pages_dec(void)
 	atomic_long_dec(&_totalram_pages);
 }
 
+/* 更新总ram size */
 static inline void totalram_pages_add(long count)
 {
 	atomic_long_add(count, &_totalram_pages);
@@ -108,6 +111,10 @@ extern int mmap_rnd_compat_bits __read_mostly;
  * redefine this macro to strip tags from pointers.
  * It's defined as noop for architectures that don't support memory tagging.
  */
+/* 支持内存tagging的架构会重新定义这个宏，以从指针中strip tag。(向内存regions
+   分配tags，将其嵌入到指向这些内存region的地址中，且在内存访问时检查内存和指针
+   tag是匹配的) 。
+*/
 #ifndef untagged_addr
 #define untagged_addr(addr) (addr)
 #endif
@@ -149,6 +156,9 @@ extern int mmap_rnd_compat_bits __read_mostly;
  * this can result in several of the writes here being dropped.
  */
 #define	mm_zero_struct_page(pp) __mm_zero_struct_page(pp)
+/* 清除page结构体的内容
+   page结构体size为7 - 10个字节
+*/
 static inline void __mm_zero_struct_page(struct page *page)
 {
 	unsigned long *_pp = (void *)page;
@@ -203,7 +213,9 @@ static inline void __mm_zero_struct_page(struct page *page)
 
 extern int sysctl_max_map_count;
 
+/* 用户reserve size */
 extern unsigned long sysctl_user_reserve_kbytes;
+/* admin reserve size */
 extern unsigned long sysctl_admin_reserve_kbytes;
 
 extern int sysctl_overcommit_memory;
@@ -586,7 +598,9 @@ enum page_entry_size {
  * unmapping it (needed to keep files on disk up-to-date etc), pointer
  * to the functions called when a no-page or a wp-page exception occurs.
  */
+/* vm回调函数 */
 struct vm_operations_struct {
+	/* 打开/关闭vma */
 	void (*open)(struct vm_area_struct * area);
 	void (*close)(struct vm_area_struct * area);
 	/* Called any time before splitting to check if it's allowed */
@@ -657,28 +671,34 @@ struct vm_operations_struct {
 					  unsigned long addr);
 };
 
+/* vma初始化 */
 static inline void vma_init(struct vm_area_struct *vma, struct mm_struct *mm)
 {
 	static const struct vm_operations_struct dummy_vm_ops = {};
 
+	/* 将vma与给定进程绑定 */
 	memset(vma, 0, sizeof(*vma));
 	vma->vm_mm = mm;
 	vma->vm_ops = &dummy_vm_ops;
 	INIT_LIST_HEAD(&vma->anon_vma_chain);
 }
 
+/* 匿名页不含有vm_ops */
 static inline void vma_set_anonymous(struct vm_area_struct *vma)
 {
 	vma->vm_ops = NULL;
 }
 
+/* 判断一个vma是否为匿名页 */
 static inline bool vma_is_anonymous(struct vm_area_struct *vma)
 {
 	return !vma->vm_ops;
 }
 
+/* 判断一个vma是否是为一个临时栈 */
 static inline bool vma_is_temporary_stack(struct vm_area_struct *vma)
 {
+	/* 校验该vma的内容是否为栈 */
 	int maybe_stack = vma->vm_flags & (VM_GROWSDOWN | VM_GROWSUP);
 
 	if (!maybe_stack)
@@ -691,6 +711,7 @@ static inline bool vma_is_temporary_stack(struct vm_area_struct *vma)
 	return false;
 }
 
+/* 判断该vma是否不属于当前线程 */
 static inline bool vma_is_foreign(struct vm_area_struct *vma)
 {
 	if (!current->mm)
@@ -702,6 +723,7 @@ static inline bool vma_is_foreign(struct vm_area_struct *vma)
 	return false;
 }
 
+/* vma是否可访问，判断其是否含有读|写|执行权限 */
 static inline bool vma_is_accessible(struct vm_area_struct *vma)
 {
 	return vma->vm_flags & VM_ACCESS_FLAGS;
@@ -800,6 +822,7 @@ static inline int is_vmalloc_or_module_addr(const void *x)
 }
 #endif
 
+/* 尝试分配连续的物理内存，若分配失败则fallback为vmalloc分配 */
 extern void *kvmalloc_node(size_t size, gfp_t flags, int node);
 static inline void *kvmalloc(size_t size, gfp_t flags)
 {
@@ -814,6 +837,7 @@ static inline void *kvzalloc(size_t size, gfp_t flags)
 	return kvmalloc(size, flags | __GFP_ZERO);
 }
 
+/* 分配n * size长度的内存 */
 static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
 {
 	size_t bytes;
@@ -824,6 +848,7 @@ static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
 	return kvmalloc(bytes, flags);
 }
 
+/* 分配n * size长度的内存，并将内存清零 */
 static inline void *kvcalloc(size_t n, size_t size, gfp_t flags)
 {
 	return kvmalloc_array(n, size, flags | __GFP_ZERO);
@@ -842,6 +867,27 @@ static inline int head_compound_mapcount(struct page *head)
  *
  * Must be called only for compound pages or any their tail sub-pages.
  */
+/* compound page(复合页)将物理上连续的两个或多个页看成一个独立的大页，它可以
+   用来创建hugetlbfs中使用的大页（hugepage）。也可以用来创建透明大页（transparent 
+   huge page）子系统。但是它不能用在页缓存（page cache）中，这是因为页缓存中管理的
+   都是单个页。
+
+   当__alloc_pages分配标志gfp_flags指定了__GFP_COMP，那么内核必须将这些页组合成复合
+   页compound page。复合页的尺寸要远大于当前分页系统支持的页面大小。并且一定是2^order
+   * PAGE_SIZE大小。
+   
+   复合页的引入是因为随着计算机物理内存容量不断增大，4G以上几乎成了标配，几十G的内存
+   也很常见，而操作系统仍然使用4KB大小页面的基本单位，显得有些滞后。当采用4KB大小的页
+   面时，想像一下当应用程序分配2MB内存，并进行访问时，共有512个页面，操作系统会经历512
+   次TLB miss和512次缺页中断后，才可以把这2M地址空间全部映射到物理内存上；然而如果使用
+   2MB大小的compand页，那么只需要一次TLB miss和一次缺页中断。
+
+   复合页中的第一个4KB页面为head page，后面的所有page 为tail page。每个page的private保
+   存一个指针，head page的private指向本身，tail page的private指向head page
+
+   Page页中的flag标记用来识别复合页。在复合页中，打头的第一个普通页成为“head page”，用
+   PG_head标记，而后面的所有页被称为“tail pages”，用PG_tail标记
+*/
 static inline int compound_mapcount(struct page *page)
 {
 	VM_BUG_ON_PAGE(!PageCompound(page), page);
@@ -1124,6 +1170,7 @@ vm_fault_t finish_mkwrite_fault(struct vm_fault *vmf);
 #define KASAN_TAG_MASK		((1UL << KASAN_TAG_WIDTH) - 1)
 #define ZONEID_MASK		((1UL << ZONEID_SHIFT) - 1)
 
+/* 获取page的zone，在page结构体中zone id存放在flag中 */
 static inline enum zone_type page_zonenum(const struct page *page)
 {
 	ASSERT_EXCLUSIVE_BITS(page->flags, ZONES_MASK << ZONES_PGSHIFT);
@@ -1131,6 +1178,7 @@ static inline enum zone_type page_zonenum(const struct page *page)
 }
 
 #ifdef CONFIG_ZONE_DEVICE
+/* 判断给定page是否位于ZONE_DEVICE的zone中 */
 static inline bool is_zone_device_page(const struct page *page)
 {
 	return page_zonenum(page) == ZONE_DEVICE;
@@ -1144,6 +1192,7 @@ static inline bool is_zone_device_page(const struct page *page)
 }
 #endif
 
+/* 判断给定page是否位于ZONE_MOVABLE的zone中 */
 static inline bool is_zone_movable_page(const struct page *page)
 {
 	return page_zonenum(page) == ZONE_MOVABLE;
@@ -1312,6 +1361,7 @@ void unpin_user_pages(struct page **pages, unsigned long npages);
  * Return: True, if it is likely that the page has been "dma-pinned".
  * False, if the page is definitely not dma-pinned.
  */
+/* 判断给定page是否为pinned for dma */
 static inline bool page_maybe_dma_pinned(struct page *page)
 {
 	if (hpage_pincount_available(page))
@@ -1362,6 +1412,7 @@ static inline bool page_needs_cow_for_dma(struct vm_area_struct *vma,
  * We only guarantee that it will return the same value for two combinable
  * pages in a zone.
  */
+/* 获取page的zone id */
 static inline int page_zone_id(struct page *page)
 {
 	return (page->flags >> ZONEID_PGSHIFT) & ZONEID_MASK;
@@ -1370,6 +1421,7 @@ static inline int page_zone_id(struct page *page)
 #ifdef NODE_NOT_IN_PAGE_FLAGS
 extern int page_to_nid(const struct page *page);
 #else
+/* 获取page的node id */
 static inline int page_to_nid(const struct page *page)
 {
 	struct page *p = (struct page *)page;
@@ -1495,7 +1547,7 @@ static inline bool cpupid_match_pid(struct task_struct *task, int cpupid)
  * setting tags for all pages to native kernel tag value 0xff, as the default
  * value 0x00 maps to 0xff.
  */
-
+/* 计算该page的kasan tag */
 static inline u8 page_kasan_tag(const struct page *page)
 {
 	u8 tag = 0xff;
@@ -1508,6 +1560,7 @@ static inline u8 page_kasan_tag(const struct page *page)
 	return tag;
 }
 
+/* 设置kasan tag */
 static inline void page_kasan_tag_set(struct page *page, u8 tag)
 {
 	if (kasan_enabled()) {
@@ -1517,6 +1570,7 @@ static inline void page_kasan_tag_set(struct page *page, u8 tag)
 	}
 }
 
+/* reset kasan tag函数 */
 static inline void page_kasan_tag_reset(struct page *page)
 {
 	if (kasan_enabled())
@@ -1535,23 +1589,30 @@ static inline void page_kasan_tag_reset(struct page *page) { }
 
 #endif /* CONFIG_KASAN_SW_TAGS || CONFIG_KASAN_HW_TAGS */
 
+/* 根据page获取其zone */
 static inline struct zone *page_zone(const struct page *page)
 {
+	/* 获取该page对应的node和zone，然后从该node的zone数组中获取
+	   对应的zone信息
+	*/
 	return &NODE_DATA(page_to_nid(page))->node_zones[page_zonenum(page)];
 }
 
+/* 获取该page对应的pg_data_t */
 static inline pg_data_t *page_pgdat(const struct page *page)
 {
 	return NODE_DATA(page_to_nid(page));
 }
 
 #ifdef SECTION_IN_PAGE_FLAGS
+/* 设置page的section */
 static inline void set_page_section(struct page *page, unsigned long section)
 {
 	page->flags &= ~(SECTIONS_MASK << SECTIONS_PGSHIFT);
 	page->flags |= (section & SECTIONS_MASK) << SECTIONS_PGSHIFT;
 }
 
+/* 获取该page的section nr */
 static inline unsigned long page_to_section(const struct page *page)
 {
 	return (page->flags >> SECTIONS_PGSHIFT) & SECTIONS_MASK;
@@ -1560,6 +1621,7 @@ static inline unsigned long page_to_section(const struct page *page)
 
 /* MIGRATE_CMA and ZONE_MOVABLE do not allow pin pages */
 #ifdef CONFIG_MIGRATION
+/* 该page是否允许被pin */
 static inline bool is_pinnable_page(struct page *page)
 {
 	return !(is_zone_movable_page(page) || is_migrate_cma_page(page)) ||
@@ -1572,18 +1634,21 @@ static inline bool is_pinnable_page(struct page *page)
 }
 #endif
 
+/* 设置page的zone */
 static inline void set_page_zone(struct page *page, enum zone_type zone)
 {
 	page->flags &= ~(ZONES_MASK << ZONES_PGSHIFT);
 	page->flags |= (zone & ZONES_MASK) << ZONES_PGSHIFT;
 }
 
+/* 设置page的node */
 static inline void set_page_node(struct page *page, unsigned long node)
 {
 	page->flags &= ~(NODES_MASK << NODES_PGSHIFT);
 	page->flags |= (node & NODES_MASK) << NODES_PGSHIFT;
 }
 
+/* 设置page的zone、node和section */
 static inline void set_page_links(struct page *page, enum zone_type zone,
 	unsigned long node, unsigned long pfn)
 {
@@ -1609,6 +1674,7 @@ static __always_inline void *lowmem_page_address(const struct page *page)
 #endif
 
 #if defined(WANT_PAGE_VIRTUAL)
+/* 获取和设置该page的虚拟地址 */
 static inline void *page_address(const struct page *page)
 {
 	return page->virtual;
@@ -1638,6 +1704,7 @@ extern struct address_space *page_mapping(struct page *page);
 
 extern struct address_space *__page_file_mapping(struct page *);
 
+/* 获取page的文件映射信息 */
 static inline
 struct address_space *page_file_mapping(struct page *page)
 {
@@ -1653,6 +1720,7 @@ extern pgoff_t __page_file_index(struct page *page);
  * Return the pagecache index of the passed page.  Regular pagecache pages
  * use ->index whereas swapcache pages use swp_offset(->private)
  */
+/* 获取该page的pagecache index */
 static inline pgoff_t page_index(struct page *page)
 {
 	if (unlikely(PageSwapCache(page)))
@@ -1668,6 +1736,17 @@ struct address_space *page_mapping(struct page *page);
  * ALLOC_NO_WATERMARKS and the low watermark was not
  * met implying that the system is under some pressure.
  */
+/* 用于判断该page是否为PF_MEMALLOC类型的page
+当一个进程被设置PF_MEMALLOC后，那么对进程会有如下影响：
+1. 当进程进行页面分配时，可以忽略内存管理的水印进行分配，这是告诉内存管理
+   系统，给我一点紧急内存使用，我将会释放更多的内存给你。
+2. 如果忽略水印分配仍然失败，那么直接返回ENOMEM，而不是等待kswapd回收或者
+   缩减内存
+3. 如果忽略水印分配仍然失败，那么直接返回ENOMEM，而不会调用OOM killer去杀
+   死进程，释放内存
+4. 2和3 说的很清楚了，就是在page_allocs中失败并不会重试。
+
+*/
 static inline bool page_is_pfmemalloc(const struct page *page)
 {
 	/*
@@ -2843,7 +2922,9 @@ static inline vm_fault_t vmf_error(int err)
 struct page *follow_page(struct vm_area_struct *vma, unsigned long address,
 			 unsigned int foll_flags);
 
+/* pte是否可写 */
 #define FOLL_WRITE	0x01	/* check pte is writable */
+/* page是否可访问 */
 #define FOLL_TOUCH	0x02	/* mark page accessed */
 #define FOLL_GET	0x04	/* do get_page on page */
 #define FOLL_DUMP	0x08	/* give error on hole if it would be zero */
@@ -3127,6 +3208,12 @@ extern int soft_offline_page(unsigned long pfn, int flags);
 /*
  * Error handlers for various types of pages.
  */
+/* 内存failure结果
+   MF_IGNORED：不能被处理
+   MF_FAILED：处理失败
+   MF_DELAYED：延后处理
+   MF_RECOVERED：成功恢复
+*/
 enum mf_result {
 	MF_IGNORED,	/* Error: cannot be handled */
 	MF_FAILED,	/* Error: handling failed */
@@ -3134,6 +3221,9 @@ enum mf_result {
 	MF_RECOVERED,	/* Successfully recovered */
 };
 
+/* 内存failure页面类型的action
+   MF_MSG_KERNEL：
+*/
 enum mf_action_page_type {
 	MF_MSG_KERNEL,
 	MF_MSG_KERNEL_HIGH_ORDER,

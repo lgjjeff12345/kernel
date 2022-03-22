@@ -31,12 +31,16 @@ suspend_state_t pm_suspend_target_state;
  * If set, the suspend/hibernate code will abort transitions to a sleep state
  * if wakeup events are registered during or immediately before the transition.
  */
+/* 若设置该值，则suspend/hibernate代码将abort转换流程，并进入睡眠状态。
+*/
 bool events_check_enabled __read_mostly;
 
 /* First wakeup IRQ seen by the kernel in the last cycle. */
+/* kernel在上一个cycle看到的第一个wakup中断 */
 unsigned int pm_wakeup_irq __read_mostly;
 
 /* If greater than 0 and the system is suspending, terminate the suspend. */
+/* 若该值大于0，且系统正在suspending，则终止suspend */
 static atomic_t pm_abort_suspend __read_mostly;
 
 /*
@@ -44,11 +48,15 @@ static atomic_t pm_abort_suspend __read_mostly;
  * They need to be modified together atomically, so it's better to use one
  * atomic variable to hold them both.
  */
+/* 用于保存已注册wakeup事件和正在处理的wakeup事件数目。
+   它们需要一起原子地修改，因此用一个原子变量保存它们
+*/
 static atomic_t combined_event_count = ATOMIC_INIT(0);
 
 #define IN_PROGRESS_BITS	(sizeof(int) * 4)
 #define MAX_IN_PROGRESS		((1 << IN_PROGRESS_BITS) - 1)
 
+/* 获取已注册wakeup事件和正在被处理wakeup事件数目 */
 static void split_counters(unsigned int *cnt, unsigned int *inpr)
 {
 	unsigned int comb = atomic_read(&combined_event_count);
@@ -70,6 +78,7 @@ static DECLARE_WAIT_QUEUE_HEAD(wakeup_count_wait_queue);
 
 DEFINE_STATIC_SRCU(wakeup_srcu);
 
+/* deleted唤醒源 */
 static struct wakeup_source deleted_ws = {
 	.name = "deleted",
 	.lock =  __SPIN_LOCK_UNLOCKED(deleted_ws.lock),
@@ -81,6 +90,7 @@ static DEFINE_IDA(wakeup_ida);
  * wakeup_source_create - Create a struct wakeup_source object.
  * @name: Name of the new wakeup source.
  */
+/* 创建一个唤醒源对象 */
 struct wakeup_source *wakeup_source_create(const char *name)
 {
 	struct wakeup_source *ws;
@@ -91,11 +101,13 @@ struct wakeup_source *wakeup_source_create(const char *name)
 	if (!ws)
 		goto err_ws;
 
+	/* 设置唤醒源名 */
 	ws_name = kstrdup_const(name, GFP_KERNEL);
 	if (!ws_name)
 		goto err_name;
 	ws->name = ws_name;
 
+	/* 分配唤醒源id */
 	id = ida_alloc(&wakeup_ida, GFP_KERNEL);
 	if (id < 0)
 		goto err_id;
@@ -115,6 +127,7 @@ EXPORT_SYMBOL_GPL(wakeup_source_create);
 /*
  * Record wakeup_source statistics being deleted into a dummy wakeup_source.
  */
+/* 记录正在被删除，并成为dummy唤醒源的统计信息 */
 static void wakeup_source_record(struct wakeup_source *ws)
 {
 	unsigned long flags;
@@ -140,6 +153,7 @@ static void wakeup_source_record(struct wakeup_source *ws)
 	spin_unlock_irqrestore(&deleted_ws.lock, flags);
 }
 
+/* 释放唤醒源 */
 static void wakeup_source_free(struct wakeup_source *ws)
 {
 	ida_free(&wakeup_ida, ws->id);
@@ -153,6 +167,7 @@ static void wakeup_source_free(struct wakeup_source *ws)
  *
  * Use only for wakeup source objects created with wakeup_source_create().
  */
+/* 销毁唤醒源 */
 void wakeup_source_destroy(struct wakeup_source *ws)
 {
 	if (!ws)
@@ -168,6 +183,7 @@ EXPORT_SYMBOL_GPL(wakeup_source_destroy);
  * wakeup_source_add - Add given object to the list of wakeup sources.
  * @ws: Wakeup source object to add to the list.
  */
+/* 将给定唤醒源添加到唤醒源链表好在哪个 */
 void wakeup_source_add(struct wakeup_source *ws)
 {
 	unsigned long flags;
@@ -176,6 +192,7 @@ void wakeup_source_add(struct wakeup_source *ws)
 		return;
 
 	spin_lock_init(&ws->lock);
+	/* 定时器设置 */
 	timer_setup(&ws->timer, pm_wakeup_timer_fn, 0);
 	ws->active = false;
 
@@ -215,15 +232,21 @@ EXPORT_SYMBOL_GPL(wakeup_source_remove);
  * @dev: Device this wakeup source is associated with (or NULL if virtual).
  * @name: Name of the wakeup source to register.
  */
+/* 注册唤醒源，并将其添加到链表中
+   dev：与该唤醒源相关的设备
+   name：唤醒源名
+*/
 struct wakeup_source *wakeup_source_register(struct device *dev,
 					     const char *name)
 {
 	struct wakeup_source *ws;
 	int ret;
 
+	/* 创建唤醒源 */
 	ws = wakeup_source_create(name);
 	if (ws) {
 		if (!dev || device_is_registered(dev)) {
+			/* 在sysfs中添加唤醒源 */
 			ret = wakeup_source_sysfs_add(dev, ws);
 			if (ret) {
 				wakeup_source_free(ws);
@@ -240,13 +263,17 @@ EXPORT_SYMBOL_GPL(wakeup_source_register);
  * wakeup_source_unregister - Remove wakeup source from the list and remove it.
  * @ws: Wakeup source object to unregister.
  */
+/* 唤醒源注销 */
 void wakeup_source_unregister(struct wakeup_source *ws)
 {
 	if (ws) {
+		/* 从链表中删除该唤醒源，并删除timer */
 		wakeup_source_remove(ws);
+		/* 从sysfs中删除该唤醒源 */
 		if (ws->dev)
 			wakeup_source_sysfs_remove(ws);
 
+		/* 销毁唤醒源资源 */
 		wakeup_source_destroy(ws);
 	}
 }
@@ -367,6 +394,10 @@ EXPORT_SYMBOL_GPL(device_wakeup_enable);
  *
  * Call under the device's power.lock lock.
  */
+/* 将一个唤醒中断attach到一个唤醒源
+   将一个设备的唤醒中断attach到唤醒源，因此设备的唤醒中断可以为
+   suspend和resume自动配置
+*/
 void device_wakeup_attach_irq(struct device *dev,
 			     struct wake_irq *wakeirq)
 {
@@ -390,6 +421,7 @@ void device_wakeup_attach_irq(struct device *dev,
  *
  * Call under the device's power.lock lock.
  */
+/* 将一个wakeirq从唤醒源中detach */
 void device_wakeup_detach_irq(struct device *dev)
 {
 	struct wakeup_source *ws;
@@ -404,12 +436,16 @@ void device_wakeup_detach_irq(struct device *dev)
  *
  * Iterates over the list of device wakeirqs to arm them.
  */
+/* 遍历设备唤醒IRQ列表以对其进行防护 */
 void device_wakeup_arm_wake_irqs(void)
 {
 	struct wakeup_source *ws;
 	int srcuidx;
 
 	srcuidx = srcu_read_lock(&wakeup_srcu);
+	/* 遍历wakeup_sources链表，并根据device_may_wakeup的条件使能
+	   该中断的唤醒功能
+	*/
 	list_for_each_entry_rcu_locked(ws, &wakeup_sources, entry)
 		dev_pm_arm_wake_irq(ws->wakeirq);
 	srcu_read_unlock(&wakeup_srcu, srcuidx);
@@ -420,12 +456,16 @@ void device_wakeup_arm_wake_irqs(void)
  *
  * Iterates over the list of device wakeirqs to disarm them.
  */
+/* 解除中断唤醒能力 */
 void device_wakeup_disarm_wake_irqs(void)
 {
 	struct wakeup_source *ws;
 	int srcuidx;
 
 	srcuidx = srcu_read_lock(&wakeup_srcu);
+	/* 遍历wakeup_sources链表，并根据device_may_wakeup的条件失能
+	   该中断的唤醒功能
+	*/
 	list_for_each_entry_rcu_locked(ws, &wakeup_sources, entry)
 		dev_pm_disarm_wake_irq(ws->wakeirq);
 	srcu_read_unlock(&wakeup_srcu, srcuidx);
@@ -694,6 +734,7 @@ static inline void update_prevent_sleep_time(struct wakeup_source *ws,
  * become inactive by decrementing the counter of wakeup events being processed
  * and incrementing the counter of registered wakeup events.
  */
+/* 将一个给定的唤醒源标记为inactive */
 static void wakeup_source_deactivate(struct wakeup_source *ws)
 {
 	unsigned int cnt, inpr, cec;
@@ -751,6 +792,7 @@ static void wakeup_source_deactivate(struct wakeup_source *ws)
  *
  * It is safe to call it from interrupt context.
  */
+/* 通知PM core正在处理的唤醒事件已经结束 */
 void __pm_relax(struct wakeup_source *ws)
 {
 	unsigned long flags;
@@ -759,6 +801,7 @@ void __pm_relax(struct wakeup_source *ws)
 		return;
 
 	spin_lock_irqsave(&ws->lock, flags);
+	/* 调用唤醒源deactivate接口 */
 	if (ws->active)
 		wakeup_source_deactivate(ws);
 	spin_unlock_irqrestore(&ws->lock, flags);
@@ -792,6 +835,7 @@ EXPORT_SYMBOL_GPL(pm_relax);
  * in @data if it is currently active and its timer has not been canceled and
  * the expiration time of the timer is not in future.
  */
+/* 唤醒定时器处理函数 */
 static void pm_wakeup_timer_fn(struct timer_list *t)
 {
 	struct wakeup_source *ws = from_timer(ws, t, timer);
@@ -799,6 +843,7 @@ static void pm_wakeup_timer_fn(struct timer_list *t)
 
 	spin_lock_irqsave(&ws->lock, flags);
 
+	/* 已经超时 */
 	if (ws->active && ws->timer_expires
 	    && time_after_eq(jiffies, ws->timer_expires)) {
 		wakeup_source_deactivate(ws);
@@ -907,6 +952,11 @@ EXPORT_SYMBOL_GPL(pm_print_active_wakeup_sources);
  * since the old value was stored.  Also return true if the current number of
  * wakeup events being processed is different from zero.
  */
+/* 用于检查power切换流程是否需要终止
+   （1）将当前已注册的wakeup事件数量，与其先前保存的值比较，若从old value被
+        保存之后，又有新的wakeup事件被注册，则返回true。
+   （2）若当前正在被处理的wakeup事件不为0，也会返回true
+*/
 bool pm_wakeup_pending(void)
 {
 	unsigned long flags;

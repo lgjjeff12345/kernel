@@ -55,8 +55,10 @@ struct subsys_private {
 };
 #define to_subsys_private(obj) container_of(obj, struct subsys_private, subsys.kobj)
 
+/* 驱动的私有数据 */
 struct driver_private {
 	struct kobject kobj;
+	/* 该驱动服务的设备链表 */
 	struct klist klist_devices;
 	struct klist_node knode_bus;
 	struct module_kobject *mkobj;
@@ -85,6 +87,14 @@ struct driver_private {
  *
  * Nothing outside of the driver core should ever touch these fields.
  */
+/* 设备的私有数据 
+   klist_children：包含该设备的所有子设备
+   knode_parent：sibling链表中的节点
+   deferred_probe：用于重试驱动绑定的设备链表，通常是由于该设备不能获取
+   所有的资源。典型地如其会依赖于另一个驱动先probe
+   async_driver：指向通过async_probe方式等待probe的设备驱动
+   dead：该设备正在或已经从系统中移除
+*/
 struct device_private {
 	struct klist klist_children;
 	struct klist_node knode_parent;

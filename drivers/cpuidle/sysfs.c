@@ -18,6 +18,7 @@
 
 #include "cpuidle.h"
 
+/* 显示可获得governor */
 static ssize_t show_available_governors(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
@@ -26,7 +27,9 @@ static ssize_t show_available_governors(struct device *dev,
 	struct cpuidle_governor *tmp;
 
 	mutex_lock(&cpuidle_lock);
+	/* 遍历cpuidle governor链表,并显示其governor名字 */
 	list_for_each_entry(tmp, &cpuidle_governors, governor_list) {
+		/* 最多输出一个page的数据 */
 		if (i >= (ssize_t) (PAGE_SIZE - (CPUIDLE_NAME_LEN + 2)))
 			goto out;
 
@@ -39,6 +42,7 @@ out:
 	return i;
 }
 
+/* 获取当前的cpuidle驱动 */
 static ssize_t show_current_driver(struct device *dev,
 				   struct device_attribute *attr,
 				   char *buf)
@@ -48,6 +52,7 @@ static ssize_t show_current_driver(struct device *dev,
 
 	spin_lock(&cpuidle_driver_lock);
 	drv = cpuidle_get_driver();
+	/* 显示驱动名 */
 	if (drv)
 		ret = sprintf(buf, "%s\n", drv->name);
 	else
@@ -57,6 +62,7 @@ static ssize_t show_current_driver(struct device *dev,
 	return ret;
 }
 
+/* 显示当前的governor */
 static ssize_t show_current_governor(struct device *dev,
 				     struct device_attribute *attr,
 				     char *buf)
@@ -64,6 +70,7 @@ static ssize_t show_current_governor(struct device *dev,
 	ssize_t ret;
 
 	mutex_lock(&cpuidle_lock);
+	/* 输出cpuidle_curr_governor的名字 */
 	if (cpuidle_curr_governor)
 		ret = sprintf(buf, "%s\n", cpuidle_curr_governor->name);
 	else
@@ -73,6 +80,9 @@ static ssize_t show_current_governor(struct device *dev,
 	return ret;
 }
 
+/* 修改当前的cpuidle governor
+   它会执行cpuidle governor切换操作
+*/
 static ssize_t store_current_governor(struct device *dev,
 				      struct device_attribute *attr,
 				      const char *buf, size_t count)
@@ -81,14 +91,17 @@ static ssize_t store_current_governor(struct device *dev,
 	int ret;
 	struct cpuidle_governor *gov;
 
+	/* 读取输入的governor名字 */
 	ret = sscanf(buf, "%" __stringify(CPUIDLE_NAME_LEN) "s", gov_name);
 	if (ret != 1)
 		return -EINVAL;
 
 	mutex_lock(&cpuidle_lock);
 	ret = -EINVAL;
+	/* 遍历cpuidle governor，查找与给定名字匹配的governor */
 	list_for_each_entry(gov, &cpuidle_governors, governor_list) {
 		if (!strncmp(gov->name, gov_name, CPUIDLE_NAME_LEN)) {
+			/* 找到匹配的governor，切换为该governor */
 			ret = cpuidle_switch_governor(gov);
 			break;
 		}
@@ -121,6 +134,7 @@ static struct attribute_group cpuidle_attr_group = {
  * cpuidle_add_interface - add CPU global sysfs attributes
  * @dev: the target device
  */
+/* 在sysfs的cpu根目录下，添加cpuidle属性 */
 int cpuidle_add_interface(struct device *dev)
 {
 	return sysfs_create_group(&dev->kobj, &cpuidle_attr_group);
@@ -465,6 +479,7 @@ static inline void cpuidle_free_state_kobj(struct cpuidle_device *device, int i)
  * cpuidle_add_state_sysfs - adds cpuidle states sysfs attributes
  * @device: the target device
  */
+/* 添加cpuidle状态sysfs属性 */
 static int cpuidle_add_state_sysfs(struct cpuidle_device *device)
 {
 	int i, ret = -ENOMEM;
@@ -601,6 +616,7 @@ static struct kobj_type ktype_driver_cpuidle = {
  * cpuidle_add_driver_sysfs - adds the driver name sysfs attribute
  * @dev: the target device
  */
+/* 添加cpuidle驱动sysfs */
 static int cpuidle_add_driver_sysfs(struct cpuidle_device *dev)
 {
 	struct cpuidle_driver_kobj *kdrv;
@@ -655,14 +671,17 @@ static inline void cpuidle_remove_driver_sysfs(struct cpuidle_device *dev)
  * cpuidle_add_device_sysfs - adds device specific sysfs attributes
  * @device: the target device
  */
+/* cpuidle添加设备的sysfs注册 */
 int cpuidle_add_device_sysfs(struct cpuidle_device *device)
 {
 	int ret;
 
+	/* 状态sysfs */
 	ret = cpuidle_add_state_sysfs(device);
 	if (ret)
 		return ret;
 
+	/* 驱动sysfs */
 	ret = cpuidle_add_driver_sysfs(device);
 	if (ret)
 		cpuidle_remove_state_sysfs(device);

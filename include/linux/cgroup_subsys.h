@@ -8,7 +8,23 @@
 /*
  * This file *must* be included with SUBSYS() defined.
  */
-
+/* cgroup subsys:
+   cpuset
+   cpu
+   cpuacct
+   io
+   memory
+   devices
+   freezer
+   net_cls
+   perf_event
+   net_prio
+   hugetlb
+   pids
+   rdma
+   misc
+   debug
+*/
 #if IS_ENABLED(CONFIG_CPUSETS)
 SUBSYS(cpuset)
 #endif

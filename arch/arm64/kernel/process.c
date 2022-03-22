@@ -71,6 +71,7 @@ void (*pm_power_off)(void);
 EXPORT_SYMBOL_GPL(pm_power_off);
 
 #ifdef CONFIG_HOTPLUG_CPU
+/* 将cpu关闭 */
 void arch_cpu_idle_dead(void)
 {
        cpu_die();
@@ -86,6 +87,7 @@ void arch_cpu_idle_dead(void)
  * avoid any code or data used by any SW CPU pin loop. The CPU hotplug
  * functionality embodied in smpt_shutdown_nonboot_cpus() to achieve this.
  */
+/* 由kexec在machine_kexec之前调用调用 */
 void machine_shutdown(void)
 {
 	smp_shutdown_nonboot_cpus(reboot_cpu);
@@ -96,10 +98,13 @@ void machine_shutdown(void)
  * activity (executing tasks, handling interrupts). smp_send_stop()
  * achieves this.
  */
+/* stop secondary cpu，并且本cpu进入while（1）循环 */
 void machine_halt(void)
 {
 	local_irq_disable();
+	/* 停止secondary cpu */
 	smp_send_stop();
+	/* 进入while循环 */
 	while (1);
 }
 
@@ -109,6 +114,7 @@ void machine_halt(void)
  * achieves this. When the system power is turned off, it will take all CPUs
  * with it.
  */
+/* 架构相关的power off接口 */
 void machine_power_off(void)
 {
 	local_irq_disable();
@@ -126,10 +132,16 @@ void machine_power_off(void)
  * executing pre-reset code, and using RAM that the primary CPU's code wishes
  * to use. Implementing such co-ordination would be essentially impossible.
  */
+/* arm64的重启接口
+   在primary cpu重启系统时，需要secondary cpu停止执行任何活动。smp系统必须
+   提供一个硬件重启实现，以确保所有cpu同时reset。它可确保primary cpu在reset
+   后执行的代码，不需要与其它cpu协调，以确保它们不是运行在reset之前的代码上。
+*/
 void machine_restart(char *cmd)
 {
 	/* Disable interrupts first */
 	local_irq_disable();
+	/* 停止除本cpu之外的所有其它cpu */
 	smp_send_stop();
 
 	/*
@@ -140,6 +152,7 @@ void machine_restart(char *cmd)
 		efi_reboot(reboot_mode, NULL);
 
 	/* Now call the architecture specific reboot code. */
+	/* 调用架构相关的重启代码 */
 	do_kernel_restart(cmd);
 
 	/*
@@ -510,9 +523,13 @@ __notrace_funcgraph struct task_struct *__switch_to(struct task_struct *prev,
 {
 	struct task_struct *last;
 
+	/* 与fp和simd有关 */
 	fpsimd_thread_switch(next);
+	/* thread local storage,与tpidr_el0和tpidrro_el0有关。应用于线程库 */
 	tls_thread_switch(next);
+	/* 恢复硬件断点 */
 	hw_breakpoint_thread_switch(next);
+	/* 用于将pid写入contextidr_el1寄存器中 */
 	contextidr_thread_switch(next);
 	entry_task_switch(next);
 	ssbs_thread_switch(next);
@@ -544,6 +561,9 @@ __notrace_funcgraph struct task_struct *__switch_to(struct task_struct *prev,
 	return last;
 }
 
+/* 获取进程的wchan，若进程在睡眠状态，返回该进程睡眠时所在的函数。
+   否则，返回0
+*/
 unsigned long get_wchan(struct task_struct *p)
 {
 	struct stackframe frame;
@@ -552,6 +572,7 @@ unsigned long get_wchan(struct task_struct *p)
 	if (!p || p == current || task_is_running(p))
 		return 0;
 
+	/* 获取该线程的栈 */
 	stack_page = (unsigned long)try_get_task_stack(p);
 	if (!stack_page)
 		return 0;

@@ -199,10 +199,12 @@ static void driver_deferred_probe_trigger(void)
  *
  *	It will disable probing of devices and defer their probes instead.
  */
+/* 推迟所有的probe */
 void device_block_probing(void)
 {
 	defer_all_probes = true;
 	/* sync with probes to avoid races. */
+	/* 等待正在probe的设备probe完成 */
 	wait_for_device_probe();
 }
 
@@ -709,6 +711,7 @@ int driver_probe_done(void)
  * wait_for_device_probe
  * Wait for device probing to be completed.
  */
+/* 等待设备probe完成 */
 void wait_for_device_probe(void)
 {
 	/* wait for probe timeout */
@@ -806,6 +809,7 @@ static int __init save_async_options(char *buf)
 }
 __setup("driver_async_probe=", save_async_options);
 
+/* 判断驱动是否允许异步probe */
 bool driver_allows_async_probing(struct device_driver *drv)
 {
 	switch (drv->probe_type) {
@@ -1158,6 +1162,7 @@ EXPORT_SYMBOL_GPL(driver_attach);
  * __device_release_driver() must be called with @dev lock held.
  * When called for a USB interface, @dev->parent lock must be held as well.
  */
+/* 释放设备的驱动 */
 static void __device_release_driver(struct device *dev, struct device *parent)
 {
 	struct device_driver *drv;
@@ -1222,6 +1227,7 @@ static void __device_release_driver(struct device *dev, struct device *parent)
 	}
 }
 
+/* 释放该设备的驱动 */
 void device_release_driver_internal(struct device *dev,
 				    struct device_driver *drv,
 				    struct device *parent)
@@ -1272,26 +1278,31 @@ void device_driver_detach(struct device *dev)
  * driver_detach - detach driver from all devices it controls.
  * @drv: driver.
  */
+/* 将驱动从所有它控制的设备detach */
 void driver_detach(struct device_driver *drv)
 {
 	struct device_private *dev_prv;
 	struct device *dev;
 
+	/* 若该驱动允许异步probe，等待所有异步调用完成 */
 	if (driver_allows_async_probing(drv))
 		async_synchronize_full();
 
 	for (;;) {
 		spin_lock(&drv->p->klist_devices.k_lock);
+		/* 遍历该驱动的设备klist链表 */
 		if (list_empty(&drv->p->klist_devices.k_list)) {
 			spin_unlock(&drv->p->klist_devices.k_lock);
 			break;
 		}
+		/* 获取该设备的私有数据 */
 		dev_prv = list_last_entry(&drv->p->klist_devices.k_list,
 				     struct device_private,
 				     knode_driver.n_node);
 		dev = dev_prv->device;
 		get_device(dev);
 		spin_unlock(&drv->p->klist_devices.k_lock);
+		/* 释放该设备的驱动 */
 		device_release_driver_internal(dev, drv, dev->parent);
 		put_device(dev);
 	}

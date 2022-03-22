@@ -27,6 +27,7 @@ struct device;
 #define FWNODE_FLAG_NOT_DEVICE		BIT(1)
 #define FWNODE_FLAG_INITIALIZED		BIT(2)
 
+/* firmware设备的节点 */
 struct fwnode_handle {
 	struct fwnode_handle *secondary;
 	const struct fwnode_operations *ops;
@@ -36,6 +37,7 @@ struct fwnode_handle {
 	u8 flags;
 };
 
+/* fwnode的link */
 struct fwnode_link {
 	struct fwnode_handle *supplier;
 	struct list_head s_hook;
@@ -49,6 +51,11 @@ struct fwnode_link {
  * @id: Endpoint id
  * @local_fwnode: reference to the related fwnode
  */
+/* fwnode graph的端点
+   port：端口号
+   id：端点id
+   local_fwnode：与fwnode相关的引用
+*/
 struct fwnode_endpoint {
 	unsigned int port;
 	unsigned int id;
@@ -101,6 +108,7 @@ struct fwnode_reference_args {
  * @add_links:	Create fwnode links to all the suppliers of the fwnode. Return
  *		zero on success, a negative error code otherwise.
  */
+/* fwnode接口的操作函数 */
 struct fwnode_operations {
 	struct fwnode_handle *(*get)(struct fwnode_handle *fwnode);
 	void (*put)(struct fwnode_handle *fwnode);

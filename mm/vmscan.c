@@ -4040,8 +4040,10 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
 		 * We have freed the memory, now we should compact it to make
 		 * allocation of the requested order possible.
 		 */
+		/* 唤醒kcompactd线程 */
 		wakeup_kcompactd(pgdat, alloc_order, highest_zoneidx);
 
+		/* 睡眠0.1s */
 		remaining = schedule_timeout(HZ/10);
 
 		/*
@@ -4106,14 +4108,18 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
  * If there are applications that are active memory-allocators
  * (most normal use), this basically shouldn't matter.
  */
+/* kswapd线程处理函数 */
 static int kswapd(void *p)
 {
 	unsigned int alloc_order, reclaim_order;
 	unsigned int highest_zoneidx = MAX_NR_ZONES - 1;
 	pg_data_t *pgdat = (pg_data_t *)p;
+	/* 获取当前进程的结构体 */
 	struct task_struct *tsk = current;
+	/* 获取该node对应的cpu id */
 	const struct cpumask *cpumask = cpumask_of_node(pgdat->node_id);
 
+	/* 将当前线程迁移到与该node关联的cpu上 */
 	if (!cpumask_empty(cpumask))
 		set_cpus_allowed_ptr(tsk, cpumask);
 
@@ -4130,6 +4136,7 @@ static int kswapd(void *p)
 	 * trying to free the first piece of memory in the first place).
 	 */
 	tsk->flags |= PF_MEMALLOC | PF_SWAPWRITE | PF_KSWAPD;
+	/* 将当前进程设置为可冻结的 */
 	set_freezable();
 
 	WRITE_ONCE(pgdat->kswapd_order, 0);
@@ -4279,6 +4286,7 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
  * This kswapd start function will be called by init and node-hot-add.
  * On node-hot-add, kswapd will moved to proper cpus if cpus are hot-added.
  */
+/* 为每个node 创建一个kswapd线程 */
 int kswapd_run(int nid)
 {
 	pg_data_t *pgdat = NODE_DATA(nid);
@@ -4287,6 +4295,7 @@ int kswapd_run(int nid)
 	if (pgdat->kswapd)
 		return 0;
 
+	/* 创建线程，线程名为kswapdx */
 	pgdat->kswapd = kthread_run(kswapd, pgdat, "kswapd%d", nid);
 	if (IS_ERR(pgdat->kswapd)) {
 		/* failure at boot is fatal */
@@ -4312,11 +4321,14 @@ void kswapd_stop(int nid)
 	}
 }
 
+/* 初始化kswapd */
 static int __init kswapd_init(void)
 {
 	int nid;
 
+	/* swap设置函数，用于配置一次换入换出的page数目 */
 	swap_setup();
+	/* 为每个node启动一个独立的kswapd线程 */
 	for_each_node_state(nid, N_MEMORY)
  		kswapd_run(nid);
 	return 0;

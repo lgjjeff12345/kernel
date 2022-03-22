@@ -1163,6 +1163,7 @@ trace_selftest_startup_wakeup(struct tracer *trace, struct trace_array *tr)
 #endif /* CONFIG_SCHED_TRACER */
 
 #ifdef CONFIG_BRANCH_TRACER
+/* 启动分支trace的自测功能 */
 int
 trace_selftest_startup_branch(struct tracer *trace, struct trace_array *tr)
 {

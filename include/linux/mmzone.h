@@ -24,6 +24,9 @@
 #include <asm/page.h>
 
 /* Free memory management - zoned buddy allocator.  */
+/* 释放内存管理 - zoned buddy分配器
+   用于表示zone中最大的buddy order
+*/
 #ifndef CONFIG_FORCE_MAX_ZONEORDER
 #define MAX_ORDER 11
 #else
@@ -39,6 +42,13 @@
  */
 #define PAGE_ALLOC_COSTLY_ORDER 3
 
+/* 迁移类型
+   MIGRATE_UNMOVABLE：不可移动页面
+   MIGRATE_MOVABLE：可移动页面
+   MIGRATE_RECLAIMABLE：可回收页面
+   MIGRATE_PCPTYPES：pcp类型页面
+   MIGRATE_HIGHATOMIC：
+*/
 enum migratetype {
 	MIGRATE_UNMOVABLE,
 	MIGRATE_MOVABLE,
@@ -78,6 +88,7 @@ extern const char * const migratetype_names[MIGRATE_TYPES];
 #  define is_migrate_cma_page(_page) false
 #endif
 
+/* 迁移类型是否可移动，cma类型或movable类型 */
 static inline bool is_migrate_movable(int mt)
 {
 	return is_migrate_cma(mt) || mt == MIGRATE_MOVABLE;
@@ -94,8 +105,11 @@ extern int page_group_by_mobility_disabled;
 #define get_pageblock_migratetype(page)					\
 	get_pfnblock_flags_mask(page, page_to_pfn(page), MIGRATETYPE_MASK)
 
+/* 空闲区域 */
 struct free_area {
+	/* gai order不同migrate类型的空闲链表 */
 	struct list_head	free_list[MIGRATE_TYPES];
+	/* 该order的空闲数量 */
 	unsigned long		nr_free;
 };
 
@@ -128,6 +142,14 @@ struct zone_padding {
 #endif
 
 #ifdef CONFIG_NUMA
+/* numa统计信息
+   NUMA_HIT：在期望的节点被分配
+   NUMA_MISS：在非期望的节点被分配
+   NUMA_FOREIGN：期望在本节点分配，但在其它位置hit
+   NUMA_INTERLEAVE_HIT：interleaver preferred本zone
+   NUMA_LOCAL：来自本地node的分配
+   NUMA_OTHER：来自其它节点的分配
+*/
 enum numa_stat_item {
 	NUMA_HIT,		/* allocated in intended node */
 	NUMA_MISS,		/* allocated in non intended node */
@@ -141,6 +163,19 @@ enum numa_stat_item {
 #define NR_VM_NUMA_EVENT_ITEMS 0
 #endif
 
+/* zone统计数据item
+   NR_FREE_PAGES：空闲页面数目
+   NR_ZONE_LRU_BASE：只用于compaction和回收重试
+   NR_ZONE_INACTIVE_ANON：等于NR_ZONE_LRU_BASE
+   NR_ZONE_ACTIVE_ANON：活动的匿名页数量
+   NR_ZONE_INACTIVE_FILE：非活动的文件页数目
+   NR_ZONE_ACTIVE_FILE：活动的文件页数目
+   NR_ZONE_UNEVICTABLE：UNEVICTABLE页数目
+   NR_ZONE_WRITE_PENDING：写pending页数目，它们是dirty，写回且不稳定的页
+   NR_MLOCK：mlock页且从LRU移除
+   NR_BOUNCE：bounce页数目
+   NR_FREE_CMA_PAGES：空闲的CMA页面
+*/
 enum zone_stat_item {
 	/* First 128 byte cacheline (assuming 64 bit words) */
 	NR_FREE_PAGES,
@@ -160,6 +195,7 @@ enum zone_stat_item {
 	NR_FREE_CMA_PAGES,
 	NR_VM_ZONE_STAT_ITEMS };
 
+/* node统计item */
 enum node_stat_item {
 	NR_LRU_BASE,
 	NR_INACTIVE_ANON = NR_LRU_BASE, /* must match order of LRU_[IN]ACTIVE */
@@ -326,6 +362,7 @@ struct lruvec {
 /* LRU Isolation modes. */
 typedef unsigned __bitwise isolate_mode_t;
 
+/* watermark的类型 */
 enum zone_watermarks {
 	WMARK_MIN,
 	WMARK_LOW,
@@ -354,6 +391,7 @@ enum zone_watermarks {
 #define min_wmark_pages(z) (z->_watermark[WMARK_MIN] + z->watermark_boost)
 #define low_wmark_pages(z) (z->_watermark[WMARK_LOW] + z->watermark_boost)
 #define high_wmark_pages(z) (z->_watermark[WMARK_HIGH] + z->watermark_boost)
+/* zone的 */
 #define wmark_pages(z, i) (z->_watermark[i] + z->watermark_boost)
 
 /* Fields and list protected by pagesets local_lock in page_alloc.c */
@@ -392,6 +430,7 @@ struct per_cpu_nodestat {
 
 #endif /* !__GENERATING_BOUNDS.H */
 
+/* zone类型 */
 enum zone_type {
 	/*
 	 * ZONE_DMA and ZONE_DMA32 are used when there are peripherals not able
@@ -402,6 +441,13 @@ enum zone_type {
 	 * DMA mask is assumed when ZONE_DMA32 is defined. Some 64-bit
 	 * platforms may need both zones as they support peripherals with
 	 * different DMA addressing limitations.
+	 */
+	 /* ZONE_DMA和ZONE_DMA32用于外设不能在整个可寻址内存DMA的场景下。
+		在包含了整个32位地址空间的架构下，使用ZONE_DMA32。对于含有更小
+		DMA寻址限制的情形，使用ZONE_DMA。这一区别非常重要，因为当定义了
+		ZONE_DMA32，则DMA mask将被嘉定为32bit。
+		对于有些64位系统，可能需要同时支持这两个zone，因为它们的外设可能
+		含有不同的dma地址限制
 	 */
 #ifdef CONFIG_ZONE_DMA
 	ZONE_DMA,
@@ -414,6 +460,8 @@ enum zone_type {
 	 * performed on pages in ZONE_NORMAL if the DMA devices support
 	 * transfers to all addressable memory.
 	 */
+	 /* 若dma设备支持在整个内存地址空间传输，则dma操作可以在ZONE_NORMAL执行
+     */
 	ZONE_NORMAL,
 #ifdef CONFIG_HIGHMEM
 	/*
@@ -475,6 +523,30 @@ enum zone_type {
 	 * if has_unmovable_pages() states that there are no unmovable pages,
 	 * there can be false negatives).
 	 */
+	/* ZONE_MOVABLE与ZONE_NORMAL类似，但它是包含可移动的页。ZONE_MOVABLE的主要用途
+	   是使得内存的offline/unplug更加可能成功，以及使得非可移动的分配更加局部，如
+	   增加THP/huge的数量。
+	   特殊的情况如下：
+	  （1）Pinned pages：(long-term) pinning可移动页可能使得这些page不可移动，因此
+	       我们不能在ZONE_MOVABLE pinning long-term页面。当页面被pinned且faulted，
+	       它们将立即来自正确的zone。然而，在页面被pinned时，其地址空间依然有可能
+	       已经位于ZONE_MOVABLE中。这种情况下，我们将其migrate到其它zone中，若迁移
+	       失败，则pinned也失败
+	  （2）memblock分配：kernelcore/movablecore设置可能导致ZONE_MOVABLE在启动后包含
+	       不可移动的分配。内存的offlining和分配failed early
+	  （3）memory空洞：kernelcore/movablecore设置可能导致极少可能ZONE_MOVABLE在启动
+	       后包含空洞，如我们含有部分populated的section。内存的offlining和分配failed 
+	       early
+	  （4）PG_hwpoison页面：在内存offlining期间，当poisoned页可以被skip，这些页不能
+	       被分配
+	  （5）不可移动的PG_offline页面：在半虚拟环境中，hotplugged内存block可能只有部分
+	       被buddy管理（如XEN-balloon、Hyper-V balloon或virtio-mem）。这些没有被buddy
+	       管理的页面是不可移动的PG_offline页面。
+	  （6）ZERO_PAGE(0)：kernelcore/movablecore设置可能导致ZERO_PAGE(0)在不同的额平台
+	       分配方式不同，导致其最终位于movable zone中。ZERO_PAGE(0)不能被迁移
+	  （7）内存热插拔：当使用memmap_on_memory并将该内存online到MOVABLE zone，vmemmap
+	       页面 会被置于该zone。这些页面不能被真正移动
+    */
 	ZONE_MOVABLE,
 #ifdef CONFIG_ZONE_DEVICE
 	ZONE_DEVICE,
@@ -487,10 +559,12 @@ enum zone_type {
 
 #define ASYNC_AND_SYNC 2
 
+/* zone的定义 */
 struct zone {
 	/* Read-mostly fields */
 
 	/* zone watermarks, access with *_wmark_pages(zone) macros */
+	/* zone的watermark，一共有三个watermark：min | low | high */
 	unsigned long _watermark[NR_WMARK];
 	unsigned long watermark_boost;
 
@@ -529,6 +603,7 @@ struct zone {
 #endif /* CONFIG_SPARSEMEM */
 
 	/* zone_start_pfn == zone_start_paddr >> PAGE_SHIFT */
+	/* 该zoen的起始pfn */
 	unsigned long		zone_start_pfn;
 
 	/*
@@ -569,13 +644,23 @@ struct zone {
 	 * mem_hotplug_begin/end(). Any reader who can't tolerant drift of
 	 * present_pages should get_online_mems() to get a stable value.
 	 */
+	/* buddy系统管理的page，等于present页面减去reserved页面。
+       reserved页面包含由bootmem分配器分配的页面
+	*/
 	atomic_long_t		managed_pages;
+	/* 该zone总的页面，包含空洞 */
 	unsigned long		spanned_pages;
+	/* 该zone总的页面，不包含空洞 */
 	unsigned long		present_pages;
 #ifdef CONFIG_CMA
+	/* cma页面是present页面，并被分配为CMA使用
+       因此可能被内存hotplug或内存电源管理逻辑的present_pages通过检查present_pages
+       - managed_pages画出未被管理的页面。已管理的页面应该被用于页面分配器和vm扫描
+       器，以计算所有类型的watermark和thresholds
+	*/
 	unsigned long		cma_pages;
 #endif
-
+	/* zone的名字 */
 	const char		*name;
 
 #ifdef CONFIG_MEMORY_ISOLATION
@@ -592,15 +677,18 @@ struct zone {
 	seqlock_t		span_seqlock;
 #endif
 
+	/* 该zone是否已初始化 */
 	int initialized;
 
 	/* Write-intensive fields used from the page allocator */
 	ZONE_PADDING(_pad1_)
 
 	/* free areas of different sizes */
+	/* 不同order的空闲区域 */
 	struct free_area	free_area[MAX_ORDER];
 
 	/* zone flags, see below */
+	/* zone的标志 */
 	unsigned long		flags;
 
 	/* Primarily protects free_area */
@@ -646,10 +734,17 @@ struct zone {
 
 	ZONE_PADDING(_pad3_)
 	/* Zone statistics */
+	/* zone的统计信息 */
 	atomic_long_t		vm_stat[NR_VM_ZONE_STAT_ITEMS];
+	/* numa事件统计信息 */
 	atomic_long_t		vm_numa_event[NR_VM_NUMA_EVENT_ITEMS];
 } ____cacheline_internodealigned_in_smp;
 
+/* pgdat标志
+   PGDAT_DIRTY：回收扫描最近在LRU的尾部找到很多dirty的文件页
+   PGDAT_WRITEBACK：回收扫描最近找到很多正在写回的页面
+   PGDAT_RECLAIM_LOCKED：防止并发的回收
+*/
 enum pgdat_flags {
 	PGDAT_DIRTY,			/* reclaim scanning has recently found
 					 * many dirty file pages at the tail
@@ -661,6 +756,10 @@ enum pgdat_flags {
 	PGDAT_RECLAIM_LOCKED,		/* prevents concurrent reclaim */
 };
 
+/* zone标志
+   ZONE_BOOSTED_WATERMARK：zone最近boosted watermarks，kswapd唤醒时清除
+   ZONE_RECLAIM_ACTIVE：kswapd可能会扫描该zone
+*/
 enum zone_flags {
 	ZONE_BOOSTED_WATERMARK,		/* zone recently boosted watermarks.
 					 * Cleared when kswapd is woken.
@@ -668,11 +767,13 @@ enum zone_flags {
 	ZONE_RECLAIM_ACTIVE,		/* kswapd may be scanning the zone. */
 };
 
+/* 获取该zone对应的buddy管理页面数量 */
 static inline unsigned long zone_managed_pages(struct zone *zone)
 {
 	return (unsigned long)atomic_long_read(&zone->managed_pages);
 }
 
+/* 获取cma页面的数量 */
 static inline unsigned long zone_cma_pages(struct zone *zone)
 {
 #ifdef CONFIG_CMA
@@ -682,6 +783,7 @@ static inline unsigned long zone_cma_pages(struct zone *zone)
 #endif
 }
 
+/* 获取zone的结尾pfn */
 static inline unsigned long zone_end_pfn(const struct zone *zone)
 {
 	return zone->zone_start_pfn + zone->spanned_pages;
@@ -697,6 +799,7 @@ static inline bool zone_is_initialized(struct zone *zone)
 	return zone->initialized;
 }
 
+/* zone是否为空 */
 static inline bool zone_is_empty(struct zone *zone)
 {
 	return zone->spanned_pages == 0;
@@ -706,6 +809,7 @@ static inline bool zone_is_empty(struct zone *zone)
  * Return true if [start_pfn, start_pfn + nr_pages) range has a non-empty
  * intersection with the given zone
  */
+/* 判断一个给定的pfn范围与zone是否含有交集 */
 static inline bool zone_intersects(struct zone *zone,
 		unsigned long start_pfn, unsigned long nr_pages)
 {
@@ -790,12 +894,17 @@ struct deferred_split {
  * Memory statistics and page replacement data structures are maintained on a
  * per-zone basis.
  */
+/* 每个numa结点都需要含有一个pg_data_t，以描述其内存布局。在uma系统
+   上，只有一个pg_data_t以描述整个内存。内存统计和页布局数据结构体都
+   以zone为基础维护
+*/
 typedef struct pglist_data {
 	/*
 	 * node_zones contains just the zones for THIS node. Not all of the
 	 * zones may be populated, but it is the full list. It is referenced by
 	 * this node's node_zonelists as well as other node's node_zonelists.
 	 */
+	/* 该节点包含的zones */
 	struct zone node_zones[MAX_NR_ZONES];
 
 	/*
@@ -803,8 +912,10 @@ typedef struct pglist_data {
 	 * Generally the first zones will be references to this node's
 	 * node_zones.
 	 */
+	/* 包含所有节点的所有zones */
 	struct zonelist node_zonelists[MAX_ZONELISTS];
 
+	/* 该节点已populated的zones */
 	int nr_zones; /* number of populated zones in this node */
 #ifdef CONFIG_FLATMEM	/* means !SPARSEMEM */
 	struct page *node_mem_map;
@@ -827,30 +938,44 @@ typedef struct pglist_data {
 	 */
 	spinlock_t node_size_lock;
 #endif
+	/* 该node的物理内存起始pfn */
 	unsigned long node_start_pfn;
 	unsigned long node_present_pages; /* total number of physical pages */
+	/* 该node的物理内存总size */
 	unsigned long node_spanned_pages; /* total size of physical page
 					     range, including holes */
+	/* 该node的id */
 	int node_id;
+	/* kswapd的等待队列 */
 	wait_queue_head_t kswapd_wait;
+	/* pfmemalloc的等待队列 */
 	wait_queue_head_t pfmemalloc_wait;
+	/* 每个node都有一个独立的kswapd线程执行内存交换操作 */
 	struct task_struct *kswapd;	/* Protected by
 					   mem_hotplug_begin/end() */
 	int kswapd_order;
+	/* kswapd的最高zone index */
 	enum zone_type kswapd_highest_zoneidx;
 
+	/* kswapd失败计数 */
 	int kswapd_failures;		/* Number of 'reclaimed == 0' runs */
 
 #ifdef CONFIG_COMPACTION
 	int kcompactd_max_order;
+	/* kcompacted的最高zone index */
 	enum zone_type kcompactd_highest_zoneidx;
+	/* kcompacted的等待队列 */
 	wait_queue_head_t kcompactd_wait;
+	/* kcompacted的进程 */
 	struct task_struct *kcompactd;
 #endif
 	/*
 	 * This is a per-node reserve of pages that are not available
 	 * to userspace allocations.
 	 */
+	/* 该node保留的page数目。这些page不能被用户空间分配,
+       而是保留给内核使用
+	*/
 	unsigned long		totalreserve_pages;
 
 #ifdef CONFIG_NUMA
@@ -890,7 +1015,9 @@ typedef struct pglist_data {
 	ZONE_PADDING(_pad2_)
 
 	/* Per-node vmstats */
+	/* percpu的node统计信息 */
 	struct per_cpu_nodestat __percpu *per_cpu_nodestats;
+	/* vm的统计信息 */
 	atomic_long_t		vm_stat[NR_VM_NODE_STAT_ITEMS];
 } pg_data_t;
 
@@ -933,6 +1060,9 @@ bool zone_watermark_ok_safe(struct zone *z, unsigned int order,
  * Memory initialization context, use to differentiate memory added by
  * the platform statically or via memory hotplug interface.
  */
+/* 内存初始化上下文，它用于区分内存是由平台静态添加的还是通过内存
+   hotplug接口添加的
+*/
 enum meminit_context {
 	MEMINIT_EARLY,
 	MEMINIT_HOTPLUG,
@@ -981,23 +1111,27 @@ static inline bool zone_is_zone_device(struct zone *zone)
  * populated_zone(). If the whole zone is reserved then we can easily
  * end up with populated_zone() && !managed_zone().
  */
+/* 该zone含有的managed pages */
 static inline bool managed_zone(struct zone *zone)
 {
 	return zone_managed_pages(zone);
 }
 
 /* Returns true if a zone has memory */
+/* 该zone是否含有内存 */
 static inline bool populated_zone(struct zone *zone)
 {
 	return zone->present_pages;
 }
 
 #ifdef CONFIG_NUMA
+/* 获取该zone对应的node id */
 static inline int zone_to_nid(struct zone *zone)
 {
 	return zone->node;
 }
 
+/* 设置该zone的node id */
 static inline void zone_set_nid(struct zone *zone, int nid)
 {
 	zone->node = nid;
@@ -1013,6 +1147,7 @@ static inline void zone_set_nid(struct zone *zone, int nid) {}
 
 extern int movable_zone;
 
+/* 该zone index是否为高端内存 */
 static inline int is_highmem_idx(enum zone_type idx)
 {
 #ifdef CONFIG_HIGHMEM
@@ -1030,6 +1165,7 @@ static inline int is_highmem_idx(enum zone_type idx)
  * @zone: pointer to struct zone variable
  * Return: 1 for a highmem zone, 0 otherwise
  */
+/* 该zone是否为高端内存zone */
 static inline int is_highmem(struct zone *zone)
 {
 #ifdef CONFIG_HIGHMEM
@@ -1227,6 +1363,7 @@ static inline struct zoneref *first_zones_zonelist(struct zonelist *zonelist,
  * PFN_SECTION_SHIFT		pfn to/from section number
  */
 #define PA_SECTION_SHIFT	(SECTION_SIZE_BITS)
+/* 29 | 27 - 16 | 12 = 13 | 15 */
 #define PFN_SECTION_SHIFT	(SECTION_SIZE_BITS - PAGE_SHIFT)
 
 #define NR_MEM_SECTIONS		(1UL << SECTIONS_SHIFT)
@@ -1241,6 +1378,10 @@ static inline struct zoneref *first_zones_zonelist(struct zonelist *zonelist,
 #error Allocator MAX_ORDER exceeds SECTION_SIZE
 #endif
 
+/* 将pfn转换为section number,
+   section是按照固定的block分块的，如4k页时section size为128M，
+   64k页时section size为512M
+*/
 static inline unsigned long pfn_to_section_nr(unsigned long pfn)
 {
 	return pfn >> PFN_SECTION_SHIFT;
@@ -1281,6 +1422,7 @@ void subsection_map_init(unsigned long pfn, unsigned long nr_pages);
 
 struct page;
 struct page_ext;
+/* 内存section结构体 */
 struct mem_section {
 	/*
 	 * This is, logically, a pointer to an array of struct
@@ -1332,6 +1474,7 @@ static inline unsigned long *section_to_usemap(struct mem_section *ms)
 	return ms->usage->pageblock_flags;
 }
 
+/* 根据section number获取其对应的section结构体 */
 static inline struct mem_section *__nr_to_section(unsigned long nr)
 {
 #ifdef CONFIG_SPARSEMEM_EXTREME
@@ -1358,6 +1501,7 @@ extern size_t mem_section_usage_size(void);
  *      which results in PFN_SECTION_SHIFT equal 6.
  * To sum it up, at least 6 bits are available.
  */
+/* section标志，这些标志保存在section_mem_map指针的一些低bit中 */
 #define SECTION_MARKED_PRESENT		(1UL<<0)
 #define SECTION_HAS_MEM_MAP		(1UL<<1)
 #define SECTION_IS_ONLINE		(1UL<<2)
@@ -1374,11 +1518,13 @@ static inline struct page *__section_mem_map_addr(struct mem_section *section)
 	return (struct page *)map;
 }
 
+/* 该section是否present，由SECTION_MARKED_PRESENT标志确定 */
 static inline int present_section(struct mem_section *section)
 {
 	return (section && (section->section_mem_map & SECTION_MARKED_PRESENT));
 }
 
+/* 该section是否present */
 static inline int present_section_nr(unsigned long nr)
 {
 	return present_section(__nr_to_section(nr));
@@ -1399,6 +1545,7 @@ static inline int valid_section_nr(unsigned long nr)
 	return valid_section(__nr_to_section(nr));
 }
 
+/* section是否online */
 static inline int online_section(struct mem_section *section)
 {
 	return (section && (section->section_mem_map & SECTION_IS_ONLINE));

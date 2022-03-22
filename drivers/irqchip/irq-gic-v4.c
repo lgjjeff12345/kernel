@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+                         // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2016,2017 ARM Limited, All Rights Reserved.
  * Author: Marc Zyngier <marc.zyngier@arm.com>

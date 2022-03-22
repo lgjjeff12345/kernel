@@ -137,6 +137,7 @@ extern bool cgroup_memory_nokmem;
  * in __alloc_pages_slowpath(). All other functions pass the whole structure
  * by a const pointer.
  */
+/* 分配上下文 */
 struct alloc_context {
 	struct zonelist *zonelist;
 	nodemask_t *nodemask;
@@ -564,6 +565,9 @@ extern void set_pageblock_order(void);
 unsigned int reclaim_clean_pages_from_list(struct zone *zone,
 					    struct list_head *page_list);
 /* The ALLOC_WMARK bits are used as an index to zone->watermark */
+/* watermark的类型，min/low/high/no
+   ALLOC_NO_WATERMARKS：分配内存时不校验watermark
+*/
 #define ALLOC_WMARK_MIN		WMARK_MIN
 #define ALLOC_WMARK_LOW		WMARK_LOW
 #define ALLOC_WMARK_HIGH	WMARK_HIGH
@@ -585,13 +589,16 @@ unsigned int reclaim_clean_pages_from_list(struct zone *zone,
 
 #define ALLOC_HARDER		 0x10 /* try to alloc harder */
 #define ALLOC_HIGH		 0x20 /* __GFP_HIGH set */
+/* 检查正确的cpuset */
 #define ALLOC_CPUSET		 0x40 /* check for correct cpuset */
+/* 允许从cma区域分配 */
 #define ALLOC_CMA		 0x80 /* allow allocations from CMA areas */
 #ifdef CONFIG_ZONE_DMA32
 #define ALLOC_NOFRAGMENT	0x100 /* avoid mixing pageblock types */
 #else
 #define ALLOC_NOFRAGMENT	  0x0
 #endif
+/* 允许唤醒kswapd */
 #define ALLOC_KSWAPD		0x800 /* allow waking of kswapd, __GFP_KSWAPD_RECLAIM set */
 
 enum ttu_flags;

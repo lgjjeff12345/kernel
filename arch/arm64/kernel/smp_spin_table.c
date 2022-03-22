@@ -39,7 +39,7 @@ static void write_pen_release(u64 val)
 	dcache_clean_inval_poc((unsigned long)start, (unsigned long)start + size);
 }
 
-
+/* spin table的cpu初始化函数 */
 static int smp_spin_table_cpu_init(unsigned int cpu)
 {
 	struct device_node *dn;
@@ -52,6 +52,7 @@ static int smp_spin_table_cpu_init(unsigned int cpu)
 	/*
 	 * Determine the address from which the CPU is polling.
 	 */
+	/* 从device tree中获取该cpu的cpu-release-addr地址 */
 	ret = of_property_read_u64(dn, "cpu-release-addr",
 				   &cpu_release_addr[cpu]);
 	if (ret)
@@ -77,6 +78,7 @@ static int smp_spin_table_cpu_prepare(unsigned int cpu)
 	 * existing linear mapping, we can use it to cover both cases. In
 	 * either case the memory will be MT_NORMAL.
 	 */
+	/* cpu release地址映射 */
 	release_addr = ioremap_cache(cpu_release_addr[cpu],
 				     sizeof(*release_addr));
 	if (!release_addr)
@@ -89,7 +91,9 @@ static int smp_spin_table_cpu_prepare(unsigned int cpu)
 	 * boot-loader's endianness before jumping. This is mandated by
 	 * the boot protocol.
 	 */
+	/* 将启动地址写到release_addr中 */
 	writeq_relaxed(pa_holding_pen, release_addr);
+	/* 刷cache */
 	dcache_clean_inval_poc((__force unsigned long)release_addr,
 			    (__force unsigned long)release_addr +
 				    sizeof(*release_addr));
@@ -97,8 +101,12 @@ static int smp_spin_table_cpu_prepare(unsigned int cpu)
 	/*
 	 * Send an event to wake up the secondary CPU.
 	 */
+	/* 发送一个唤醒事件，sev指令会向smp系统中的所有cpu发送事件，
+       sevl向当前cpu发送事件
+	*/
 	sev();
 
+	/* 解除地址映射 */
 	iounmap(release_addr);
 
 	return 0;
@@ -119,6 +127,7 @@ static int smp_spin_table_cpu_boot(unsigned int cpu)
 	return 0;
 }
 
+/* spin table的cpu ops */
 const struct cpu_operations smp_spin_table_ops = {
 	.name		= "spin-table",
 	.cpu_init	= smp_spin_table_cpu_init,

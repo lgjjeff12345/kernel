@@ -18,9 +18,15 @@
  * @cost:	The cost coefficient associated with this level, used during
  *		energy calculation. Equal to: power * max_frequency / frequency
  */
+/* perf domain的perf状态 */
 struct em_perf_state {
+	/* 与cpufreq一致的频率，khz */
 	unsigned long frequency;
+	/* 该等级下的电源消耗 */
 	unsigned long power;
+	/* 与该等级相关的cost系数，在电源计算是会用到
+	   power * max_frequency / frequency
+	*/
 	unsigned long cost;
 };
 
@@ -41,6 +47,7 @@ struct em_perf_state {
  * a 1-to-1 mapping with CPUFreq policies. In case of other devices the @cpus
  * field is unused.
  */
+/* 性能domain */
 struct em_perf_domain {
 	struct em_perf_state *table;
 	int nr_perf_states;

@@ -28,11 +28,18 @@ enum wb_state {
 	WB_start_all,		/* nr_pages == 0 (all) work pending */
 };
 
+/* 拥塞状态 */
 enum wb_congested_state {
 	WB_async_congested,	/* The async (write) queue is getting full */
 	WB_sync_congested,	/* The sync queue is getting full */
 };
 
+/* 写回状态item
+   可回收
+   写回
+   dirtied
+   written
+*/
 enum wb_stat_item {
 	WB_RECLAIMABLE,
 	WB_WRITEBACK,
@@ -46,6 +53,16 @@ enum wb_stat_item {
 /*
  * why some writeback work was initiated
  */
+/* 写回原因：
+   BACKGROUND
+   vmscan
+   sync
+   periodic
+   laptop timer
+   fs free space
+   forker thread
+   foreign flush
+*/
 enum wb_reason {
 	WB_REASON_BACKGROUND,
 	WB_REASON_VMSCAN,
@@ -65,6 +82,7 @@ enum wb_reason {
 	WB_REASON_MAX,
 };
 
+/* 写回完成量 */
 struct wb_completion {
 	atomic_t		cnt;
 	wait_queue_head_t	*waitq;
@@ -104,12 +122,15 @@ struct wb_completion {
  * is tested for blkcg after lookup and removed from index on mismatch so
  * that a new wb for the combination can be created.
  */
+/* bdi写回结构体 */
 struct bdi_writeback {
+	/* backing dev信息 */
 	struct backing_dev_info *bdi;	/* our parent bdi */
 
 	unsigned long state;		/* Always use atomic bitops on this */
 	unsigned long last_old_flush;	/* last old data flush */
 
+	/* dirty inodes链表 */
 	struct list_head b_dirty;	/* dirty inodes */
 	struct list_head b_io;		/* parked for writeback */
 	struct list_head b_more_io;	/* parked for more writeback */
@@ -164,14 +185,18 @@ struct bdi_writeback {
 #endif
 };
 
+/* backing dev信息 */
 struct backing_dev_info {
 	u64 id;
+	/* 红黑树 */
 	struct rb_node rb_node; /* keyed by ->id */
+	/* 红黑树链表 */
 	struct list_head bdi_list;
 	unsigned long ra_pages;	/* max readahead in PAGE_SIZE units */
 	unsigned long io_pages;	/* max allowed IO size */
 
 	struct kref refcnt;	/* Reference counter for the structure */
+	/* 设备的能力 */
 	unsigned int capabilities; /* Device capabilities */
 	unsigned int min_ratio;
 	unsigned int max_ratio, max_prop_frac;
@@ -182,19 +207,24 @@ struct backing_dev_info {
 	 */
 	atomic_long_t tot_write_bandwidth;
 
+	/* bdi的写回结构体 */
 	struct bdi_writeback wb;  /* the root writeback info for this bdi */
+	/* 包含所有写回操作的链表 */
 	struct list_head wb_list; /* list of all wbs */
 #ifdef CONFIG_CGROUP_WRITEBACK
 	struct radix_tree_root cgwb_tree; /* radix tree of active cgroup wbs */
 	struct mutex cgwb_release_mutex;  /* protect shutdown of wb structs */
 	struct rw_semaphore wb_switch_rwsem; /* no cgwb switch while syncing */
 #endif
+	/* 写回等待队列 */
 	wait_queue_head_t wb_waitq;
 
+	/* 设备 */
 	struct device *dev;
 	char dev_name[64];
 	struct device *owner;
 
+	/* 定时器 */
 	struct timer_list laptop_mode_wb_timer;
 
 #ifdef CONFIG_DEBUG_FS

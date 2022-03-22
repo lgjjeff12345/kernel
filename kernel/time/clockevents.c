@@ -168,6 +168,7 @@ void clockevents_switch_state(struct clock_event_device *dev,
  * clockevents_shutdown - shutdown the device and clear next_event
  * @dev:	device to shutdown
  */
+/* shutdown一个clockevent设备 */
 void clockevents_shutdown(struct clock_event_device *dev)
 {
 	clockevents_switch_state(dev, CLOCK_EVT_STATE_SHUTDOWN);
@@ -505,6 +506,7 @@ void clockevents_config_and_register(struct clock_event_device *dev,
 				     u32 freq, unsigned long min_delta,
 				     unsigned long max_delta)
 {
+	dump_stack();
 	dev->min_delta_ticks = min_delta;
 	dev->max_delta_ticks = max_delta;
 	clockevents_config(dev, freq);
@@ -565,6 +567,7 @@ void clockevents_handle_noop(struct clock_event_device *dev)
  * Called from various tick functions with clockevents_lock held and
  * interrupts disabled.
  */
+/* 将clockevent设备由old切换为new */
 void clockevents_exchange_device(struct clock_event_device *old,
 				 struct clock_event_device *new)
 {
@@ -574,10 +577,14 @@ void clockevents_exchange_device(struct clock_event_device *old,
 	 */
 	if (old) {
 		module_put(old->owner);
+		/* 将clockevent设备状态设置为CLOCK_EVT_STATE_DETACHED，
+           且将其移到clockevents_released链表中
+		*/
 		clockevents_switch_state(old, CLOCK_EVT_STATE_DETACHED);
 		list_move(&old->list, &clockevents_released);
 	}
 
+	/* ??? */
 	if (new) {
 		BUG_ON(!clockevent_state_detached(new));
 		clockevents_shutdown(new);
@@ -617,6 +624,7 @@ void clockevents_resume(void)
  *
  * Called on the outgoing CPU after it took itself offline.
  */
+/* 将该cpu从broadcast机制中移除 */
 void tick_offline_cpu(unsigned int cpu)
 {
 	raw_spin_lock(&clockevents_lock);
@@ -629,6 +637,7 @@ void tick_offline_cpu(unsigned int cpu)
  * tick_cleanup_dead_cpu - Cleanup the tick and clockevents of a dead cpu
  * @cpu:	The dead CPU
  */
+/* 清除dead cpu的tick和clockevent */
 void tick_cleanup_dead_cpu(int cpu)
 {
 	struct clock_event_device *dev, *tmp;

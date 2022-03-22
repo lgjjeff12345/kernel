@@ -387,6 +387,7 @@ out_bc:
  * required here because the local clock event device cannot go away
  * under us.
  */
+/* 进入或退出broadcast oneshot模式 */
 int tick_broadcast_oneshot_control(enum tick_broadcast_state state)
 {
 	struct tick_device *td = this_cpu_ptr(&tick_cpu_device);
@@ -405,6 +406,7 @@ EXPORT_SYMBOL_GPL(tick_broadcast_oneshot_control);
  * Called with interrupts disabled. No locking required. If
  * tick_do_timer_cpu is owned by this cpu, nothing can change it.
  */
+/* 若do timercpu为当前cpu，则将其迁移到其它的cpu上 */
 void tick_handover_do_timer(void)
 {
 	if (tick_do_timer_cpu == smp_processor_id())
@@ -418,6 +420,9 @@ void tick_handover_do_timer(void)
  * access the hardware device itself.
  * We just set the mode and remove it from the lists.
  */
+/* 关闭一个给定cpu上的event设备
+   它由一个dead cpu调用，调用完成后将不能访问该硬件设备
+*/
 void tick_shutdown(unsigned int cpu)
 {
 	struct tick_device *td = &per_cpu(tick_cpu_device, cpu);
@@ -429,8 +434,13 @@ void tick_shutdown(unsigned int cpu)
 		 * Prevent that the clock events layer tries to call
 		 * the set mode function!
 		 */
+		/* 将clock event的状态设置为CLOCK_EVT_STATE_DETACHED */
 		clockevent_set_state(dev, CLOCK_EVT_STATE_DETACHED);
+		/* 将clockevent设备状态切换为CLOCK_EVT_STATE_DETACHED，
+           并将其移到clockevents_released链表中
+		*/
 		clockevents_exchange_device(dev, NULL);
+		/* 重置事件处理函数 */
 		dev->event_handler = clockevents_handle_noop;
 		td->evtdev = NULL;
 	}

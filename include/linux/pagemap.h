@@ -26,6 +26,11 @@ static inline bool mapping_empty(struct address_space *mapping)
 /*
  * Bits in mapping->flags.
  */
+/* mapping标志
+   AS_EIO：异步写时的IO错误
+   AS_ENOSPC：异步写时的ENOSPC
+   AS_MM_ALL_LOCKS
+*/
 enum mapping_flags {
 	AS_EIO		= 0,	/* IO error on async write */
 	AS_ENOSPC	= 1,	/* ENOSPC on async write */
@@ -100,6 +105,7 @@ static inline void mapping_set_no_writeback_tags(struct address_space *mapping)
 	set_bit(AS_NO_WRITEBACK_TAGS, &mapping->flags);
 }
 
+/* 写回操作是否设置了AS_NO_WRITEBACK_TAGS标志 */
 static inline int mapping_use_writeback_tags(struct address_space *mapping)
 {
 	return !test_bit(AS_NO_WRITEBACK_TAGS, &mapping->flags);

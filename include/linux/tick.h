@@ -96,6 +96,7 @@ static inline void tick_broadcast_force(void)
 {
 	tick_broadcast_control(TICK_BROADCAST_FORCE);
 }
+/* 进入broadcast */
 static inline int tick_broadcast_enter(void)
 {
 	return tick_broadcast_oneshot_control(TICK_BROADCAST_ENTER);
