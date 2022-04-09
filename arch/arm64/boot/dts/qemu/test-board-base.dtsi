@@ -43,7 +43,21 @@
 		device_type = "memory";
 		reg = <0x00000000 0x40000000 0x0 0x80000000>;
 	};
-	
+
+	fw-cfg@9020000 {
+		compatible = "qemu,fw-cfg-mmio";
+		reg = <0x0 0x9020000 0x0 0x00000018>;
+		dma-coherent;
+	};
+
+	platform@c000000 {
+		compatible = "qemu,platform\0simple-bus";
+		#address-cells = <0x00000001>;
+		#size-cells = <0x00000001>;
+		interrupt-parent = <&gic>;
+		ranges = <0x00 0x00 0xc000000 0x2000000>;
+	};
+
 	virtio_mmio@a000000 {
 		compatible = "virtio,mmio";
 		reg = <0x00000000 0xa000000 0x00000000 0x00000200>;
