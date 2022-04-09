@@ -65,6 +65,12 @@ static inline const char *printk_skip_headers(const char *buffer)
 
 extern int console_printk[];
 
+/* 打印等级
+   console_loglevel：控制台的打印等级
+   default_message_loglevel：默认消息的打印等级
+   minimum_console_loglevel：最小控制台打印等级
+   default_console_loglevel：默认控制台打印等级
+*/
 #define console_loglevel (console_printk[0])
 #define default_message_loglevel (console_printk[1])
 #define minimum_console_loglevel (console_printk[2])

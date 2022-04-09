@@ -983,6 +983,7 @@ static void do_thaw_all_callback(struct super_block *sb)
 	}
 }
 
+/* 执行thaw所有线程操作 */
 static void do_thaw_all(struct work_struct *work)
 {
 	__iterate_supers(do_thaw_all_callback);
@@ -995,6 +996,7 @@ static void do_thaw_all(struct work_struct *work)
  *
  * Used for emergency unfreeze of all filesystems via SysRq
  */
+/* thaw所有线程 */
 void emergency_thaw_all(void)
 {
 	struct work_struct *work;

@@ -57,6 +57,7 @@ static int _regmap_bus_reg_write(void *context, unsigned int reg,
 static int _regmap_bus_raw_write(void *context, unsigned int reg,
 				 unsigned int val);
 
+/* 寄存器地址是否位于给定的ranges数组中 */
 bool regmap_reg_in_ranges(unsigned int reg,
 			  const struct regmap_range *ranges,
 			  unsigned int nranges)
@@ -603,6 +604,7 @@ static void regmap_range_exit(struct regmap *map)
 	kfree(map->selector_work_buf);
 }
 
+/* 设置regmap的名字，其名字等于config的名字 */
 static int regmap_set_name(struct regmap *map, const struct regmap_config *config)
 {
 	if (config->name) {
@@ -618,6 +620,7 @@ static int regmap_set_name(struct regmap *map, const struct regmap_config *confi
 	return 0;
 }
 
+/* 将一个regmap attach到设备上 */
 int regmap_attach_dev(struct device *dev, struct regmap *map,
 		      const struct regmap_config *config)
 {
@@ -626,6 +629,7 @@ int regmap_attach_dev(struct device *dev, struct regmap *map,
 
 	map->dev = dev;
 
+	/* 设置regmap名字 */
 	ret = regmap_set_name(map, config);
 	if (ret)
 		return ret;
@@ -633,18 +637,21 @@ int regmap_attach_dev(struct device *dev, struct regmap *map,
 	regmap_debugfs_init(map);
 
 	/* Add a devres resource for dev_get_regmap() */
+	/* 分配一个regmap的设备resource结构体 */
 	m = devres_alloc(dev_get_regmap_release, sizeof(*m), GFP_KERNEL);
 	if (!m) {
 		regmap_debugfs_exit(map);
 		return -ENOMEM;
 	}
 	*m = map;
+	/* 将regmap添加到设备的resource列表中 */
 	devres_add(dev, m);
 
 	return 0;
 }
 EXPORT_SYMBOL_GPL(regmap_attach_dev);
 
+/* 获取regmap的寄存器endian */
 static enum regmap_endian regmap_get_reg_endian(const struct regmap_bus *bus,
 					const struct regmap_config *config)
 {
@@ -669,6 +676,7 @@ static enum regmap_endian regmap_get_reg_endian(const struct regmap_bus *bus,
 	return REGMAP_ENDIAN_BIG;
 }
 
+/* 获取regmap的value endian */
 enum regmap_endian regmap_get_val_endian(struct device *dev,
 					 const struct regmap_bus *bus,
 					 const struct regmap_config *config)
@@ -708,6 +716,7 @@ enum regmap_endian regmap_get_val_endian(struct device *dev,
 }
 EXPORT_SYMBOL_GPL(regmap_get_val_endian);
 
+/* regmap初始化接口 */
 struct regmap *__regmap_init(struct device *dev,
 			     const struct regmap_bus *bus,
 			     void *bus_context,
@@ -1220,6 +1229,7 @@ static void devm_regmap_release(struct device *dev, void *res)
 	regmap_exit(*(struct regmap **)res);
 }
 
+/* devm的regmap初始化接口 */
 struct regmap *__devm_regmap_init(struct device *dev,
 				  const struct regmap_bus *bus,
 				  void *bus_context,

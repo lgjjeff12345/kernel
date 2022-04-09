@@ -23,15 +23,17 @@
  * rate - rate is always a fixed value.  No clk_set_rate support
  * parent - fixed parent.  No clk_set_parent support
  */
-
+/* fixed rate时钟不能被gate */
 #define to_clk_fixed_rate(_hw) container_of(_hw, struct clk_fixed_rate, hw)
 
+/* 直接返回固定频率的值 */
 static unsigned long clk_fixed_rate_recalc_rate(struct clk_hw *hw,
 		unsigned long parent_rate)
 {
 	return to_clk_fixed_rate(hw)->fixed_rate;
 }
 
+/* 直接返回fixed精度值 */
 static unsigned long clk_fixed_rate_recalc_accuracy(struct clk_hw *hw,
 		unsigned long parent_accuracy)
 {
@@ -43,12 +45,16 @@ static unsigned long clk_fixed_rate_recalc_accuracy(struct clk_hw *hw,
 	return fixed->fixed_accuracy;
 }
 
+/* fixed reta时钟的ops
+   其支持recalc_rate和recalc_accuracy回调
+*/
 const struct clk_ops clk_fixed_rate_ops = {
 	.recalc_rate = clk_fixed_rate_recalc_rate,
 	.recalc_accuracy = clk_fixed_rate_recalc_accuracy,
 };
 EXPORT_SYMBOL_GPL(clk_fixed_rate_ops);
 
+/* 注册fixed频率的时钟 */
 struct clk_hw *__clk_hw_register_fixed_rate(struct device *dev,
 		struct device_node *np, const char *name,
 		const char *parent_name, const struct clk_hw *parent_hw,
@@ -66,6 +72,7 @@ struct clk_hw *__clk_hw_register_fixed_rate(struct device *dev,
 	if (!fixed)
 		return ERR_PTR(-ENOMEM);
 
+	/* 设置init参数 */
 	init.name = name;
 	init.ops = &clk_fixed_rate_ops;
 	init.flags = flags;
@@ -136,6 +143,7 @@ void clk_hw_unregister_fixed_rate(struct clk_hw *hw)
 }
 EXPORT_SYMBOL_GPL(clk_hw_unregister_fixed_rate);
 
+/* fixed clk的of设置函数 */
 #ifdef CONFIG_OF
 static struct clk_hw *_of_fixed_clk_setup(struct device_node *node)
 {
@@ -145,13 +153,17 @@ static struct clk_hw *_of_fixed_clk_setup(struct device_node *node)
 	u32 accuracy = 0;
 	int ret;
 
+	/* 获取时钟频率 */
 	if (of_property_read_u32(node, "clock-frequency", &rate))
 		return ERR_PTR(-EIO);
 
+	/* 获取时钟精度 */
 	of_property_read_u32(node, "clock-accuracy", &accuracy);
 
+	/* 获取时钟输出名 */
 	of_property_read_string(node, "clock-output-names", &clk_name);
 
+	/* 注册fixed频率的时钟 */
 	hw = clk_hw_register_fixed_rate_with_accuracy(NULL, clk_name, NULL,
 						    0, rate, accuracy);
 	if (IS_ERR(hw))
@@ -186,6 +198,7 @@ static int of_fixed_clk_remove(struct platform_device *pdev)
 	return 0;
 }
 
+/* probe一个fixed clk */
 static int of_fixed_clk_probe(struct platform_device *pdev)
 {
 	struct clk_hw *hw;
@@ -208,6 +221,7 @@ static const struct of_device_id of_fixed_clk_ids[] = {
 	{ }
 };
 
+/* fixed clock驱动 */
 static struct platform_driver of_fixed_clk_driver = {
 	.driver = {
 		.name = "of_fixed_clk",

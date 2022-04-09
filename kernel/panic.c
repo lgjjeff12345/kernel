@@ -549,6 +549,7 @@ void oops_enter(void)
  */
 static u64 oops_id;
 
+/* 初始化oops id，该值为随机数 */
 static int init_oops_id(void)
 {
 	if (!oops_id)
@@ -560,8 +561,10 @@ static int init_oops_id(void)
 }
 late_initcall(init_oops_id);
 
+/* 更新并打印oops id */
 static void print_oops_end_marker(void)
 {
+	/* 更新oops id */
 	init_oops_id();
 	pr_warn("---[ end trace %016llx ]---\n", (unsigned long long)oops_id);
 }
@@ -570,10 +573,13 @@ static void print_oops_end_marker(void)
  * Called when the architecture exits its oops handler, after printing
  * everything.
  */
+/* 由架构在退出其oops处理函数时调用 */
 void oops_exit(void)
 {
 	do_oops_enter_exit();
+	/* 更新并打印oops id */
 	print_oops_end_marker();
+	/* dump log buffer中的打印信息 */
 	kmsg_dump(KMSG_DUMP_OOPS);
 }
 
@@ -707,6 +713,7 @@ core_param(pause_on_oops, pause_on_oops, int, 0644);
 core_param(panic_on_warn, panic_on_warn, int, 0644);
 core_param(crash_kexec_post_notifiers, crash_kexec_post_notifiers, bool, 0644);
 
+/* oops参数设置，若输入值为panic，则在oops时会使系统panic */
 static int __init oops_setup(char *s)
 {
 	if (!s)
@@ -717,6 +724,7 @@ static int __init oops_setup(char *s)
 }
 early_param("oops", oops_setup);
 
+/* 根据命令行参数设置panic on taint的参数 */
 static int __init panic_on_taint_setup(char *s)
 {
 	char *taint_str;

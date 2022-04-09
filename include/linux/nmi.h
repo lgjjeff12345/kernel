@@ -129,6 +129,9 @@ void watchdog_nmi_disable(unsigned int cpu);
  * may be used to reset the timeout - for code which intentionally
  * disables interrupts for a long time. This call is stateless.
  */
+/* 重启nmi看门狗，若架构支持nmi看门狗。
+   对于长时间关中断的代码，该接口被用于reset timeout
+*/
 static inline void touch_nmi_watchdog(void)
 {
 	arch_touch_nmi_watchdog();

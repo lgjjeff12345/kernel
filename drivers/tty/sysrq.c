@@ -98,6 +98,7 @@ static int __init sysrq_always_enabled_setup(char *str)
 __setup("sysrq_always_enabled", sysrq_always_enabled_setup);
 
 
+/* 通过sysrq设置控制台的log等级 */
 static void sysrq_handle_loglevel(int key)
 {
 	int i;
@@ -107,6 +108,7 @@ static void sysrq_handle_loglevel(int key)
 	pr_info("Loglevel set to %d\n", i);
 	console_loglevel = i;
 }
+/* sysrq log等级的处理函数 */
 static const struct sysrq_key_op sysrq_loglevel_op = {
 	.handler	= sysrq_handle_loglevel,
 	.help_msg	= "loglevel(0-9)",
@@ -147,6 +149,7 @@ static const struct sysrq_key_op sysrq_unraw_op = {
 #define sysrq_unraw_op (*(const struct sysrq_key_op *)NULL)
 #endif /* CONFIG_VT */
 
+/* 处理crash操作 */
 static void sysrq_handle_crash(int key)
 {
 	/* release the RCU read lock before crashing */
@@ -154,6 +157,7 @@ static void sysrq_handle_crash(int key)
 
 	panic("sysrq triggered crash\n");
 }
+/* sysrq的crash操作 */
 static const struct sysrq_key_op sysrq_crash_op = {
 	.handler	= sysrq_handle_crash,
 	.help_msg	= "crash(c)",
@@ -161,12 +165,14 @@ static const struct sysrq_key_op sysrq_crash_op = {
 	.enable_mask	= SYSRQ_ENABLE_DUMP,
 };
 
+/* 处理reboot流程 */
 static void sysrq_handle_reboot(int key)
 {
 	lockdep_off();
 	local_irq_enable();
 	emergency_restart();
 }
+/* sysrq的reboot操作 */
 static const struct sysrq_key_op sysrq_reboot_op = {
 	.handler	= sysrq_handle_reboot,
 	.help_msg	= "reboot(b)",
@@ -176,6 +182,7 @@ static const struct sysrq_key_op sysrq_reboot_op = {
 
 const struct sysrq_key_op *__sysrq_reboot_op = &sysrq_reboot_op;
 
+/* 执行文件系统的sync */
 static void sysrq_handle_sync(int key)
 {
 	emergency_sync();
@@ -198,10 +205,12 @@ static const struct sysrq_key_op sysrq_show_timers_op = {
 	.action_msg	= "Show clockevent devices & pending hrtimers (no others)",
 };
 
+/* 重新挂载为只读模式 */
 static void sysrq_handle_mountro(int key)
 {
 	emergency_remount();
 }
+
 static const struct sysrq_key_op sysrq_mountro_op = {
 	.handler	= sysrq_handle_mountro,
 	.help_msg	= "unmount(u)",
@@ -210,11 +219,13 @@ static const struct sysrq_key_op sysrq_mountro_op = {
 };
 
 #ifdef CONFIG_LOCKDEP
+/* sysrq的locks显示函数 */
 static void sysrq_handle_showlocks(int key)
 {
 	debug_show_all_locks();
 }
 
+/* sysrq的locks显示函数 */
 static const struct sysrq_key_op sysrq_showlocks_op = {
 	.handler	= sysrq_handle_showlocks,
 	.help_msg	= "show-all-locks(d)",
@@ -227,6 +238,7 @@ static const struct sysrq_key_op sysrq_showlocks_op = {
 #ifdef CONFIG_SMP
 static DEFINE_RAW_SPINLOCK(show_lock);
 
+/* 显示cpu的调用栈 */
 static void showacpu(void *dummy)
 {
 	unsigned long flags;
@@ -237,17 +249,22 @@ static void showacpu(void *dummy)
 
 	raw_spin_lock_irqsave(&show_lock, flags);
 	pr_info("CPU%d:\n", smp_processor_id());
+	/* 显示给定线程的调用栈 */
 	show_stack(NULL, NULL, KERN_INFO);
 	raw_spin_unlock_irqrestore(&show_lock, flags);
 }
 
+/* 显示其它cpu的调用栈 */
 static void sysrq_showregs_othercpus(struct work_struct *dummy)
 {
+	/* 发送ipi */
 	smp_call_function(showacpu, NULL, 0);
 }
 
+/* 定义工作队列 */
 static DECLARE_WORK(sysrq_showallcpus, sysrq_showregs_othercpus);
 
+/* 显示所有active cpu的调用栈 */
 static void sysrq_handle_showallcpus(int key)
 {
 	/*
@@ -258,16 +275,21 @@ static void sysrq_handle_showallcpus(int key)
 	if (!trigger_all_cpu_backtrace()) {
 		struct pt_regs *regs = NULL;
 
+		/* 当前cpu若处于中断状态，则显示寄存器。否则，不处理 */
 		if (in_irq())
 			regs = get_irq_regs();
 		if (regs) {
 			pr_info("CPU%d:\n", smp_processor_id());
 			show_regs(regs);
 		}
+		/* 通过工作队列向所有其它cpu发送ipi中断，并在中断处理函数
+		   中执行显示调用栈操作 
+		*/
 		schedule_work(&sysrq_showallcpus);
 	}
 }
 
+/* 显示所有active cpu的调用栈 */
 static const struct sysrq_key_op sysrq_showallcpus_op = {
 	.handler	= sysrq_handle_showallcpus,
 	.help_msg	= "show-backtrace-all-active-cpus(l)",
@@ -319,10 +341,12 @@ static const struct sysrq_key_op sysrq_showstate_blocked_op = {
 #ifdef CONFIG_TRACING
 #include <linux/ftrace.h>
 
+/* ftrace dump操作 */
 static void sysrq_ftrace_dump(int key)
 {
 	ftrace_dump(DUMP_ALL);
 }
+/* ftrace dump操作 */
 static const struct sysrq_key_op sysrq_ftrace_dump_op = {
 	.handler	= sysrq_ftrace_dump,
 	.help_msg	= "dump-ftrace-buffer(z)",
@@ -333,10 +357,12 @@ static const struct sysrq_key_op sysrq_ftrace_dump_op = {
 #define sysrq_ftrace_dump_op (*(const struct sysrq_key_op *)NULL)
 #endif
 
+/* 显示内存使用率 */
 static void sysrq_handle_showmem(int key)
 {
 	show_mem(0, NULL);
 }
+/* 显示内存使用率 */
 static const struct sysrq_key_op sysrq_showmem_op = {
 	.handler	= sysrq_handle_showmem,
 	.help_msg	= "show-memory-usage(m)",
@@ -347,11 +373,13 @@ static const struct sysrq_key_op sysrq_showmem_op = {
 /*
  * Signal sysrq helper function.  Sends a signal to all user processes.
  */
+/* 向所有的用户线程发送信号 */
 static void send_sig_all(int sig)
 {
 	struct task_struct *p;
 
 	read_lock(&tasklist_lock);
+	/* 遍历所有的线程，若为内核线程则不处理，否则向其发送给定信号 */
 	for_each_process(p) {
 		if (p->flags & PF_KTHREAD)
 			continue;
@@ -375,6 +403,7 @@ static const struct sysrq_key_op sysrq_term_op = {
 	.enable_mask	= SYSRQ_ENABLE_SIGNAL,
 };
 
+/* oom回调函数 */
 static void moom_callback(struct work_struct *ignored)
 {
 	const gfp_t gfp_mask = GFP_KERNEL;
@@ -387,6 +416,7 @@ static void moom_callback(struct work_struct *ignored)
 	};
 
 	mutex_lock(&oom_lock);
+	/* 执行oom函数 */
 	if (!out_of_memory(&oc))
 		pr_info("OOM request ignored. No task eligible\n");
 	mutex_unlock(&oom_lock);
@@ -394,10 +424,13 @@ static void moom_callback(struct work_struct *ignored)
 
 static DECLARE_WORK(moom_work, moom_callback);
 
+/* 手动执行oom */
 static void sysrq_handle_moom(int key)
 {
 	schedule_work(&moom_work);
 }
+
+/* 手动执行oom */
 static const struct sysrq_key_op sysrq_moom_op = {
 	.handler	= sysrq_handle_moom,
 	.help_msg	= "memory-full-oom-kill(f)",
@@ -405,10 +438,12 @@ static const struct sysrq_key_op sysrq_moom_op = {
 	.enable_mask	= SYSRQ_ENABLE_SIGNAL,
 };
 
+/* thaw所有的块设备 */
 static void sysrq_handle_thaw(int key)
 {
 	emergency_thaw_all();
 }
+/* thaw所有块设备 */
 static const struct sysrq_key_op sysrq_thaw_op = {
 	.handler	= sysrq_handle_thaw,
 	.help_msg	= "thaw-filesystems(j)",
@@ -416,11 +451,14 @@ static const struct sysrq_key_op sysrq_thaw_op = {
 	.enable_mask	= SYSRQ_ENABLE_SIGNAL,
 };
 
+/* kill所有用户线程 */
 static void sysrq_handle_kill(int key)
 {
 	send_sig_all(SIGKILL);
 	console_loglevel = CONSOLE_LOGLEVEL_DEBUG;
 }
+
+/* kill所有用户线程 */
 static const struct sysrq_key_op sysrq_kill_op = {
 	.handler	= sysrq_handle_kill,
 	.help_msg	= "kill-all-tasks(i)",
@@ -428,6 +466,7 @@ static const struct sysrq_key_op sysrq_kill_op = {
 	.enable_mask	= SYSRQ_ENABLE_SIGNAL,
 };
 
+/* 将rt进程改变为普通进程 */
 static void sysrq_handle_unrt(int key)
 {
 	normalize_rt_tasks();
@@ -442,6 +481,7 @@ static const struct sysrq_key_op sysrq_unrt_op = {
 /* Key Operations table and lock */
 static DEFINE_SPINLOCK(sysrq_key_table_lock);
 
+/* sysrq的key值表 */
 static const struct sysrq_key_op *sysrq_key_table[62] = {
 	&sysrq_loglevel_op,		/* 0 */
 	&sysrq_loglevel_op,		/* 1 */
@@ -566,6 +606,7 @@ static void __sysrq_put_key_op(int key, const struct sysrq_key_op *op_p)
 		sysrq_key_table[i] = op_p;
 }
 
+/* sysrq处理函数 */
 void __handle_sysrq(int key, bool check_mask)
 {
 	const struct sysrq_key_op *op_p;
@@ -1147,6 +1188,7 @@ EXPORT_SYMBOL(unregister_sysrq_key);
 /*
  * writing 'C' to /proc/sysrq-trigger is like sysrq-C
  */
+/* procfs的sysrq触发接口 */
 static ssize_t write_sysrq_trigger(struct file *file, const char __user *buf,
 				   size_t count, loff_t *ppos)
 {

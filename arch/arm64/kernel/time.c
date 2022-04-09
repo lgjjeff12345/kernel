@@ -51,6 +51,7 @@ unsigned long profile_pc(struct pt_regs *regs)
 }
 EXPORT_SYMBOL(profile_pc);
 
+/* time初始化函数 */
 void __init time_init(void)
 {
 	u32 arch_timer_rate;

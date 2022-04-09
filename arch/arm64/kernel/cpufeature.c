@@ -2860,6 +2860,7 @@ unsigned long cpu_get_elf_hwcap2(void)
 	return upper_32_bits(elf_hwcap);
 }
 
+/* 设置cpu能力 */
 static void __init setup_system_capabilities(void)
 {
 	/*
@@ -2872,10 +2873,12 @@ static void __init setup_system_capabilities(void)
 	enable_cpu_capabilities(SCOPE_ALL & ~SCOPE_BOOT_CPU);
 }
 
+/* 设置cpu特性 */
 void __init setup_cpu_features(void)
 {
 	u32 cwg;
 
+	/* 设置cpu能力 */
 	setup_system_capabilities();
 	setup_elf_hwcaps(arm64_elf_hwcaps);
 

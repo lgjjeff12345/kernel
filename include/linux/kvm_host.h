@@ -282,20 +282,27 @@ struct kvm_mmio_fragment {
 	unsigned len;
 };
 
+/* kvm的vcpu结构体 */
 struct kvm_vcpu {
+	/* 指向其指向的kvm指针 */
 	struct kvm *kvm;
 #ifdef CONFIG_PREEMPT_NOTIFIERS
 	struct preempt_notifier preempt_notifier;
 #endif
 	int cpu;
+	/* 由用户空间给定的vcpu id */
 	int vcpu_id; /* id given by userspace at creation */
+	/* kvm->vcpus数组中的下标 */
 	int vcpu_idx; /* index in kvm->vcpus array */
 	int srcu_idx;
+	/* 模式 */
 	int mode;
+	/* 请求 */
 	u64 requests;
 	unsigned long guest_debug;
 
 	int pre_pcpu;
+	/* 阻塞的vcpu链表 */
 	struct list_head blocked_vcpu_list;
 
 	struct mutex mutex;
@@ -517,6 +524,7 @@ struct kvm_memslots {
 	struct kvm_memory_slot memslots[];
 };
 
+/* kvm结构体 */
 struct kvm {
 #ifdef KVM_HAVE_MMU_RWLOCK
 	rwlock_t mmu_lock;

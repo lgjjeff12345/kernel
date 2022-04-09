@@ -17,13 +17,16 @@ static int __set_clk_parents(struct device_node *node, bool clk_supplier)
 	int index, rc, num_parents;
 	struct clk *clk, *pclk;
 
+	/* 根据assigned-clock-parents获取其parent的数量 */
 	num_parents = of_count_phandle_with_args(node, "assigned-clock-parents",
 						 "#clock-cells");
 	if (num_parents == -EINVAL)
 		pr_err("clk: invalid value of clock-parents property at %pOF\n",
 		       node);
 
+	/* 遍历其parent */
 	for (index = 0; index < num_parents; index++) {
+		/* 获取给定index的parent */
 		rc = of_parse_phandle_with_args(node, "assigned-clock-parents",
 					"#clock-cells",	index, &clkspec);
 		if (rc < 0) {
@@ -35,6 +38,7 @@ static int __set_clk_parents(struct device_node *node, bool clk_supplier)
 		}
 		if (clkspec.np == node && !clk_supplier)
 			return 0;
+		/* 从provider中获取pclk */
 		pclk = of_clk_get_from_provider(&clkspec);
 		if (IS_ERR(pclk)) {
 			if (PTR_ERR(pclk) != -EPROBE_DEFER)
@@ -43,6 +47,7 @@ static int __set_clk_parents(struct device_node *node, bool clk_supplier)
 			return PTR_ERR(pclk);
 		}
 
+		/* 获取给定index的assigned-clocks */
 		rc = of_parse_phandle_with_args(node, "assigned-clocks",
 					"#clock-cells", index, &clkspec);
 		if (rc < 0)
@@ -51,6 +56,7 @@ static int __set_clk_parents(struct device_node *node, bool clk_supplier)
 			rc = 0;
 			goto err;
 		}
+		/* 从provider中获取clk */
 		clk = of_clk_get_from_provider(&clkspec);
 		if (IS_ERR(clk)) {
 			if (PTR_ERR(clk) != -EPROBE_DEFER)
@@ -60,6 +66,7 @@ static int __set_clk_parents(struct device_node *node, bool clk_supplier)
 			goto err;
 		}
 
+		/* 设置clock的parent关系 */
 		rc = clk_set_parent(clk, pclk);
 		if (rc < 0)
 			pr_err("clk: failed to reparent %s to %s: %d\n",
@@ -82,6 +89,7 @@ static int __set_clk_rates(struct device_node *node, bool clk_supplier)
 	struct clk *clk;
 	u32 rate;
 
+	/* 获取其assigned-clock-rates属性 */
 	of_property_for_each_u32(node, "assigned-clock-rates", prop, cur, rate) {
 		if (rate) {
 			rc = of_parse_phandle_with_args(node, "assigned-clocks",
@@ -96,6 +104,7 @@ static int __set_clk_rates(struct device_node *node, bool clk_supplier)
 			if (clkspec.np == node && !clk_supplier)
 				return 0;
 
+			/* 获取其clk结构体 */
 			clk = of_clk_get_from_provider(&clkspec);
 			if (IS_ERR(clk)) {
 				if (PTR_ERR(clk) != -EPROBE_DEFER)
@@ -104,6 +113,7 @@ static int __set_clk_rates(struct device_node *node, bool clk_supplier)
 				return PTR_ERR(clk);
 			}
 
+			/* 设置其rate */
 			rc = clk_set_rate(clk, rate);
 			if (rc < 0)
 				pr_err("clk: couldn't set %s clk rate to %u (%d), current rate: %lu\n",
@@ -128,6 +138,7 @@ static int __set_clk_rates(struct device_node *node, bool clk_supplier)
  * If @clk_supplier is false the function exits returning 0 as soon as it
  * determines the @node is also a supplier of any of the clocks.
  */
+/* 解析并指定clocks配置 */
 int of_clk_set_defaults(struct device_node *node, bool clk_supplier)
 {
 	int rc;

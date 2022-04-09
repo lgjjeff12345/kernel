@@ -657,6 +657,7 @@ static inline int cpumask_parse(const char *buf, struct cpumask *dstp)
  *
  * Returns -errno, or 0 for success.
  */
+/* 从用户传入的字符串中解析cpumask的值 */
 static inline int cpulist_parse(const char *buf, struct cpumask *dstp)
 {
 	return bitmap_parselist(buf, cpumask_bits(dstp), nr_cpumask_bits);

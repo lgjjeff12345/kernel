@@ -76,10 +76,12 @@ struct kvm_mmu_memory_cache {
 };
 #endif
 
+/* generic的vm状态 */
 struct kvm_vm_stat_generic {
 	u64 remote_tlb_flush;
 };
 
+/* vcpu的generic状态 */
 struct kvm_vcpu_stat_generic {
 	u64 halt_successful_poll;
 	u64 halt_attempted_poll;

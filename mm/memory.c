@@ -5105,6 +5105,9 @@ EXPORT_SYMBOL_GPL(generic_access_phys);
 /*
  * Access another process' address space as given in mm.
  */
+/* 访问另一个进程的地址空间，其地址空间由mm执行，地址值由addr指定。
+   该函数可被ptrace调用以操作其跟踪进程的内存
+*/
 int __access_remote_vm(struct mm_struct *mm, unsigned long addr, void *buf,
 		       int len, unsigned int gup_flags)
 {
@@ -5148,6 +5151,7 @@ int __access_remote_vm(struct mm_struct *mm, unsigned long addr, void *buf,
 				bytes = PAGE_SIZE-offset;
 
 			maddr = kmap(page);
+			/* 根据操作类型，将vma内存读取到用户空间，或将用户空间内容拷贝到vma空间 */
 			if (write) {
 				copy_to_user_page(vma, page, addr,
 						  maddr + offset, buf, bytes);

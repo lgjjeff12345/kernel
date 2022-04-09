@@ -144,6 +144,7 @@ pstate_check_t * const aarch32_opcode_cond_checks[16] = {
 	__check_gt, __check_le, __check_al, __check_al
 };
 
+/* 该参数是由sysctl控制的 */
 int show_unhandled_signals = 0;
 
 static void dump_kernel_instr(const char *lvl, struct pt_regs *regs)
@@ -240,8 +241,12 @@ void die(const char *str, struct pt_regs *regs, int err)
 		do_exit(SIGSEGV);
 }
 
+/* 显示信号 */
 static void arm64_show_signal(int signo, const char *str)
 {
+	/* ratelimit的间隔参数为5s，burst参数为10，即在每5s的间隔内，允许
+       调用的次数不超过10次
+	*/
 	static DEFINE_RATELIMIT_STATE(rs, DEFAULT_RATELIMIT_INTERVAL,
 				      DEFAULT_RATELIMIT_BURST);
 	struct task_struct *tsk = current;

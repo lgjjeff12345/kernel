@@ -15,6 +15,11 @@ struct notifier_block;
 struct mem_cgroup;
 struct task_struct;
 
+/* oom限制
+   CONSTRAINT_CPUSET：cpuset
+   CONSTRAINT_MEMORY_POLICY：内存策略
+   CONSTRAINT_MEMCG：内存cgroup
+*/
 enum oom_constraint {
 	CONSTRAINT_NONE,
 	CONSTRAINT_CPUSET,
@@ -26,6 +31,7 @@ enum oom_constraint {
  * Details of the page allocation that triggered the oom killer that are used to
  * determine what should be killed.
  */
+/* oom控制结构体 */
 struct oom_control {
 	/* Used to determine cpuset */
 	struct zonelist *zonelist;
@@ -48,6 +54,7 @@ struct oom_control {
 	/* Used by oom implementation, do not set */
 	unsigned long totalpages;
 	struct task_struct *chosen;
+	/* 选择分数 */
 	long chosen_points;
 
 	/* Used to print the constraint info. */

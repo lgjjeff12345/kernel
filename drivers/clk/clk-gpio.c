@@ -46,6 +46,7 @@ struct clk_gpio {
 	struct gpio_desc *gpiod;
 };
 
+/* 通过gpio设置clk gate的使能和失能，或者clock的mux */
 #define to_clk_gpio(_hw) container_of(_hw, struct clk_gpio, hw)
 
 static int clk_gpio_gate_enable(struct clk_hw *hw)

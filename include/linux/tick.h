@@ -179,6 +179,7 @@ static inline void tick_nohz_idle_stop_tick_protected(void) { }
 extern bool tick_nohz_full_running;
 extern cpumask_var_t tick_nohz_full_mask;
 
+/* 是否使能了full nohz tick功能 */
 static inline bool tick_nohz_full_enabled(void)
 {
 	if (!context_tracking_enabled())

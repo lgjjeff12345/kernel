@@ -139,6 +139,7 @@ struct cgroup_file {
  * Fields marked with "PI:" are public and immutable and may be accessed
  * directly without synchronization.
  */
+/* 由系统为何的每个subsys/每个cgroup的状态 */
 struct cgroup_subsys_state {
 	/* PI: the cgroup that this css is attached to */
 	struct cgroup *cgroup;

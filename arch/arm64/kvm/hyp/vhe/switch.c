@@ -27,6 +27,7 @@
 #include <asm/thread_info.h>
 
 /* VHE specific context */
+/* percpu的kvm host数据结构和kvm hyp上下文 */
 DEFINE_PER_CPU(struct kvm_host_data, kvm_host_data);
 DEFINE_PER_CPU(struct kvm_cpu_context, kvm_hyp_ctxt);
 DEFINE_PER_CPU(unsigned long, kvm_hyp_vector);
@@ -105,6 +106,7 @@ void deactivate_traps_vhe_put(void)
 }
 
 /* Switch to the guest for VHE systems running in EL2 */
+/* 运行在EL2的vhe系统，切换到guest运行 */
 static int __kvm_vcpu_run_vhe(struct kvm_vcpu *vcpu)
 {
 	struct kvm_cpu_context *host_ctxt;

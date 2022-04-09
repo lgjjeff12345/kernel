@@ -112,9 +112,12 @@ struct irq_ops {
 	bool (*get_input_level)(int vintid);
 };
 
+/* vgic的中断结构体 */
 struct vgic_irq {
 	raw_spinlock_t irq_lock;	/* Protects the content of the struct */
+	/* 用于将所有的lpi链接在一起 */
 	struct list_head lpi_list;	/* Used to link all LPIs together */
+	/* ap链表 */
 	struct list_head ap_list;
 
 	struct kvm_vcpu *vcpu;		/* SGIs and PPIs: The VCPU
@@ -122,12 +125,14 @@ struct vgic_irq {
 					 * this is queued on.
 					 */
 
+	/* 该中断应该被发送的vcpu */
 	struct kvm_vcpu *target_vcpu;	/* The VCPU that this interrupt should
 					 * be sent to, as a result of the
 					 * targets reg (v2) or the
 					 * affinity reg (v3).
 					 */
 
+	/* guest可见的中断号 */
 	u32 intid;			/* Guest visible INTID */
 	bool line_level;		/* Level only */
 	bool pending_latch;		/* The pending latch state used to calculate
@@ -138,6 +143,7 @@ struct vgic_irq {
 	bool hw;			/* Tied to HW IRQ */
 	struct kref refcount;		/* Used for LPIs */
 	u32 hwintid;			/* HW INTID number */
+	/* 与硬件中断号相关的linux irq */
 	unsigned int host_irq;		/* linux irq corresponding to hwintid */
 	union {
 		u8 targets;			/* GICv2 target VCPUs mask */
@@ -146,7 +152,9 @@ struct vgic_irq {
 	u8 source;			/* GICv2 SGIs only */
 	u8 active_source;		/* GICv2 SGIs only */
 	u8 priority;
+	/* 中断分组 */
 	u8 group;			/* 0 == group 0, 1 == group 1 */
+	/* vgic的触发方式，电平触发或边沿触发 */
 	enum vgic_irq_config config;	/* Level or edge */
 
 	struct irq_ops *ops;
@@ -182,6 +190,7 @@ struct vgic_io_device {
 	struct kvm_io_device dev;
 };
 
+/* vgic的its结构体 */
 struct vgic_its {
 	/* The base address of the ITS control register frame */
 	gpa_t			vgic_its_base;
@@ -219,6 +228,7 @@ struct vgic_redist_region {
 	struct list_head list;
 };
 
+/* vgic的distributor结构体 */
 struct vgic_dist {
 	bool			in_kernel;
 	bool			ready;
@@ -288,6 +298,7 @@ struct vgic_dist {
 	struct its_vm		its_vm;
 };
 
+/* vgic_v2的cpu interface寄存器 */
 struct vgic_v2_cpu_if {
 	u32		vgic_hcr;
 	u32		vgic_vmcr;
@@ -297,6 +308,7 @@ struct vgic_v2_cpu_if {
 	unsigned int used_lrs;
 };
 
+/* vgic_v3的cpu interface寄存器 */
 struct vgic_v3_cpu_if {
 	u32		vgic_hcr;
 	u32		vgic_vmcr;
@@ -316,8 +328,10 @@ struct vgic_v3_cpu_if {
 	unsigned int used_lrs;
 };
 
+/* cpu的vgic结构体 */
 struct vgic_cpu {
 	/* CPU vif control registers for world switch */
+	/* 根据gic版本选择vgic的cpu interface寄存器 */
 	union {
 		struct vgic_v2_cpu_if	vgic_v2;
 		struct vgic_v3_cpu_if	vgic_v3;

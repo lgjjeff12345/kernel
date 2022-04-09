@@ -11,12 +11,29 @@
 #include <asm/esr.h>
 #include <asm/insn.h>
 #include <asm/ptrace.h>
+/* MDSCR_EL1 - monitor debug system control register
+   该寄存器是debug实现的主要寄存器。
+   bit0[SS]：software step控制位，用于控制是否允许软件单步
+   bit6[ERR]：用于保存/恢复EDSCR.ERR
+   bit12[TDCC]：将EL0陷入debug communication channel寄存器到EL1/EL2
+   bit13[KDE]：使能local（kernel）debug
+      若其为0，则除了断点指令异常外，其它的debug异常都被关闭
+      若其为1，则所有的debug异常都被使能
+   bit14[HDE]：
+   bit15[MDE]：monitor debug事件，使能断点、观测点和vector catch exception。
+      若其为0，则断点、观测点和vector catch exception关闭
+      若其为1，则断点、观测点和vector catch exception使能
+   ...
+*/
+
 
 /* Low-level stepping controls. */
 #define DBG_MDSCR_SS		(1 << 0)
+/* 该bit用于单步调试 */
 #define DBG_SPSR_SS		(1 << 21)
 
 /* MDSCR_EL1 enabling bits */
+/* mdscr的使能位 */
 #define DBG_MDSCR_KDE		(1 << 13)
 #define DBG_MDSCR_MDE		(1 << 15)
 #define DBG_MDSCR_MASK		~(DBG_MDSCR_KDE | DBG_MDSCR_MDE)
@@ -74,6 +91,7 @@ struct task_struct;
 #define DBG_HOOK_HANDLED	0
 #define DBG_HOOK_ERROR		1
 
+/* 单步钩子函数定义 */
 struct step_hook {
 	struct list_head node;
 	int (*fn)(struct pt_regs *regs, unsigned int esr);

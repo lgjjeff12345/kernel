@@ -888,6 +888,7 @@ static inline void vgic_restore_state(struct kvm_vcpu *vcpu)
 }
 
 /* Flush our emulation state into the GIC hardware before entering the guest. */
+/* 在进入guest之前flush我们到gic硬件的模拟状态 */
 void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 {
 	/*

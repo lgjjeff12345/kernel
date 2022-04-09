@@ -6068,8 +6068,10 @@ static const struct kernel_param_ops wq_watchdog_thresh_ops = {
 module_param_cb(watchdog_thresh, &wq_watchdog_thresh_ops, &wq_watchdog_thresh,
 		0644);
 
+/* 初始化watchdog的workqueue */
 static void wq_watchdog_init(void)
 {
+	/* 初始化一个定时器 */
 	timer_setup(&wq_watchdog_timer, wq_watchdog_timer_fn, TIMER_DEFERRABLE);
 	wq_watchdog_set_thresh(wq_watchdog_thresh);
 }

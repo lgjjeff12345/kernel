@@ -821,6 +821,7 @@ EXPORT_SYMBOL_GPL(smp_call_function_single_async);
  *	2) any cpu of current node if in @mask
  *	3) any other online cpu in @mask
  */
+/* 在给定cpumask中的任一cpu下运行给定函数 */
 int smp_call_function_any(const struct cpumask *mask,
 			  smp_call_func_t func, void *info, int wait)
 {
@@ -859,6 +860,7 @@ EXPORT_SYMBOL_GPL(smp_call_function_any);
 #define SCF_WAIT	(1U << 0)
 #define SCF_RUN_LOCAL	(1U << 1)
 
+/* 在一组cpu上运行一个函数 */
 static void smp_call_function_many_cond(const struct cpumask *mask,
 					smp_call_func_t func, void *info,
 					unsigned int scf_flags,
@@ -889,9 +891,11 @@ static void smp_call_function_many_cond(const struct cpumask *mask,
 	 * csd_lock() on because the interrupt context uses the same csd
 	 * storage.
 	 */
+	/* 当前不是运行于进程上下文，打印警告信息 */
 	WARN_ON_ONCE(!in_task());
 
 	/* Check if we need local execution. */
+	/* 是否在本地cpu上执行该函数 */
 	if ((scf_flags & SCF_RUN_LOCAL) && cpumask_test_cpu(this_cpu, mask))
 		run_local = true;
 
@@ -904,10 +908,13 @@ static void smp_call_function_many_cond(const struct cpumask *mask,
 
 	if (run_remote) {
 		cfd = this_cpu_ptr(&cfd_data);
+		/* 只在online，且位于cfd的cpumask中运行 */
 		cpumask_and(cfd->cpumask, mask, cpu_online_mask);
+		/* 去除cpumask中的当前cpu */
 		__cpumask_clear_cpu(this_cpu, cfd->cpumask);
 
 		cpumask_clear(cfd->cpumask_ipi);
+		/* 遍历所有需要执行的cpu */
 		for_each_cpu(cpu, cfd->cpumask) {
 			struct cfd_percpu *pcpu = per_cpu_ptr(cfd->pcpu, cpu);
 			call_single_data_t *csd = &pcpu->csd;
@@ -943,6 +950,7 @@ static void smp_call_function_many_cond(const struct cpumask *mask,
 		 * number of CPUs might be zero due to concurrent changes to the
 		 * provided mask.
 		 */
+		/* 发送ipi执行该函数 */
 		if (nr_cpus == 1)
 			send_call_function_single_ipi(last_cpu);
 		else if (likely(nr_cpus > 1))
@@ -951,6 +959,7 @@ static void smp_call_function_many_cond(const struct cpumask *mask,
 		cfd_seq_store(this_cpu_ptr(&cfd_seq_local)->pinged, this_cpu, CFD_SEQ_NOCPU, CFD_SEQ_PINGED);
 	}
 
+	/* 若需要在当前cpu上运行，则执行该函数 */
 	if (run_local && (!cond_func || cond_func(this_cpu, info))) {
 		unsigned long flags;
 
@@ -959,6 +968,7 @@ static void smp_call_function_many_cond(const struct cpumask *mask,
 		local_irq_restore(flags);
 	}
 
+	/* 若需要等待remote cpu执行完成，则执行等待操作 */
 	if (run_remote && wait) {
 		for_each_cpu(cpu, cfd->cpumask) {
 			call_single_data_t *csd;
@@ -985,6 +995,7 @@ static void smp_call_function_many_cond(const struct cpumask *mask,
  * hardware interrupt handler or from a bottom half handler. Preemption
  * must be disabled when calling this function.
  */
+/* 在一组cpu上运行一个函数 */
 void smp_call_function_many(const struct cpumask *mask,
 			    smp_call_func_t func, void *info, bool wait)
 {
@@ -1007,6 +1018,7 @@ EXPORT_SYMBOL(smp_call_function_many);
  * You must not call this function with disabled interrupts or from a
  * hardware interrupt handler or from a bottom half handler.
  */
+/* 在所有online cpu上运行一个函数 */
 void smp_call_function(smp_call_func_t func, void *info, int wait)
 {
 	preempt_disable();

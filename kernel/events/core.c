@@ -12413,6 +12413,7 @@ err_fd:
  * @overflow_handler: callback to trigger when we hit the event
  * @context: context data could be used in overflow_handler callback
  */
+/* perf事件创建内核counter */
 struct perf_event *
 perf_event_create_kernel_counter(struct perf_event_attr *attr, int cpu,
 				 struct task_struct *task,
@@ -12430,6 +12431,7 @@ perf_event_create_kernel_counter(struct perf_event_attr *attr, int cpu,
 	if (attr->aux_output)
 		return ERR_PTR(-EINVAL);
 
+	/* 分配perf事件 */
 	event = perf_event_alloc(attr, cpu, task, NULL, NULL,
 				 overflow_handler, context, -1);
 	if (IS_ERR(event)) {
@@ -12476,6 +12478,10 @@ perf_event_create_kernel_counter(struct perf_event_attr *attr, int cpu,
 		goto err_unlock;
 	}
 
+	/* 注册perf monitor。
+	  这个硬件在x86里叫performance monitoring，这个硬件有一个功能就是在
+	  cpu clock经过了多少个周期后发出一个NMI中断出来
+	*/
 	perf_install_in_context(ctx, event, event->cpu);
 	perf_unpin_context(ctx);
 	mutex_unlock(&ctx->mutex);

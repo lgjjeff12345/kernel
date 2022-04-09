@@ -70,13 +70,16 @@ int __attribute_const__ kvm_target_cpu(void);
 int kvm_reset_vcpu(struct kvm_vcpu *vcpu);
 void kvm_arm_vcpu_destroy(struct kvm_vcpu *vcpu);
 
+/* vmid结构体 */
 struct kvm_vmid {
 	/* The VMID generation used for the virt. memory system */
 	u64    vmid_gen;
 	u32    vmid;
 };
 
+/* kvm的stage 2 mmu */
 struct kvm_s2_mmu {
+	/* vmid结构体 */
 	struct kvm_vmid vmid;
 
 	/*
@@ -89,6 +92,7 @@ struct kvm_s2_mmu {
 	 * for vEL1/EL0 with vHCR_EL2.VM == 0.  In that case, we use the
 	 * canonical stage-2 page tables.
 	 */
+	/* pgd的物理地址 */
 	phys_addr_t	pgd_phys;
 	struct kvm_pgtable *pgt;
 
@@ -138,6 +142,7 @@ struct kvm_arch {
 	bool mte_enabled;
 };
 
+/* vcpu的fault信息 */
 struct kvm_vcpu_fault_info {
 	u32 esr_el2;		/* Hyp Syndrom Register */
 	u64 far_el2;		/* Hyp Fault Address Register */
@@ -145,6 +150,7 @@ struct kvm_vcpu_fault_info {
 	u64 disr_el1;		/* Deferred [SError] Status Register */
 };
 
+/* vcpu的系统寄存器 */
 enum vcpu_sysreg {
 	__INVALID_SYSREG__,   /* 0 is reserved as an invalid value */
 	MPIDR_EL1,	/* MultiProcessor Affinity Register */
@@ -225,7 +231,9 @@ enum vcpu_sysreg {
 	NR_SYS_REGS	/* Nothing after this line! */
 };
 
+/* kvm cpu的上下文 */
 struct kvm_cpu_context {
+	/* host的上下文 */
 	struct user_pt_regs regs;	/* sp = sp_el0 */
 
 	u64	spsr_abt;
@@ -237,19 +245,23 @@ struct kvm_cpu_context {
 
 	u64 sys_regs[NR_SYS_REGS];
 
+	/* vcpu的上下文 */
 	struct kvm_vcpu *__hyp_running_vcpu;
 };
 
+/* kvm的pmu事件 */
 struct kvm_pmu_events {
 	u32 events_host;
 	u32 events_guest;
 };
 
+/* kvm的host数据 */
 struct kvm_host_data {
 	struct kvm_cpu_context host_ctxt;
 	struct kvm_pmu_events pmu_events;
 };
 
+/* kvm host的psci配置 */
 struct kvm_host_psci_config {
 	/* PSCI version used by host. */
 	u32 version;
@@ -272,6 +284,7 @@ extern s64 kvm_nvhe_sym(hyp_physvirt_offset);
 extern u64 kvm_nvhe_sym(hyp_cpu_logical_map)[NR_CPUS];
 #define hyp_cpu_logical_map CHOOSE_NVHE_SYM(hyp_cpu_logical_map)
 
+/* vcpu的reset状态 */
 struct vcpu_reset_state {
 	unsigned long	pc;
 	unsigned long	r0;
@@ -279,6 +292,7 @@ struct vcpu_reset_state {
 	bool		reset;
 };
 
+/* 架构相关的kvm的vcpu结构体 */
 struct kvm_vcpu_arch {
 	struct kvm_cpu_context ctxt;
 	void *sve_state;
@@ -292,6 +306,7 @@ struct kvm_vcpu_arch {
 	u32 mdcr_el2;
 
 	/* Exception Information */
+	/* vcpu的fault信息，包括esr、far等 */
 	struct kvm_vcpu_fault_info fault;
 
 	/* State of various workarounds, see kvm_asm.h for bit assignment */
@@ -313,6 +328,7 @@ struct kvm_vcpu_arch {
 	 * debug_ptr points to the set of debug registers that should be loaded
 	 * onto the hardware when running the guest.
 	 */
+	/* 架构相关的geust debug寄存器 */
 	struct kvm_guest_debug_arch *debug_ptr;
 	struct kvm_guest_debug_arch vcpu_debug_state;
 	struct kvm_guest_debug_arch external_debug_state;
@@ -360,10 +376,12 @@ struct kvm_vcpu_arch {
 	struct kvm_mmu_memory_cache mmu_page_cache;
 
 	/* Target CPU and feature flags */
+	/* target cpu和feature标志 */
 	int target;
 	DECLARE_BITMAP(features, KVM_VCPU_MAX_FEATURES);
 
 	/* Detect first run of a vcpu */
+	/* 判断是否为vcpu的第一次执行 */
 	bool has_run_once;
 
 	/* Virtual SError ESR to restore when HCR_EL2.VSE is set */
@@ -565,10 +583,19 @@ static inline bool __vcpu_write_sys_reg_to_cpu(u64 val, int reg)
 	return true;
 }
 
+/* vm状态 */
 struct kvm_vm_stat {
 	struct kvm_vm_stat_generic generic;
 };
 
+/* vcpu的状态
+  generic：generic状态
+  hvc_exit_stat：hvc退出状态
+  wfe_exit_stat：wfe退出状态
+  wfi_exit_stat：wfi退出状态
+  mmio_exit_user：用户mmio退出
+  mmio_exit_kernel：内核mmio退出
+*/
 struct kvm_vcpu_stat {
 	struct kvm_vcpu_stat_generic generic;
 	u64 hvc_exit_stat;

@@ -96,6 +96,7 @@ static u8 clk_mux_get_parent(struct clk_hw *hw)
 	return clk_mux_val_to_index(hw, mux->table, mux->flags, val);
 }
 
+/* 设置mux的parent */
 static int clk_mux_set_parent(struct clk_hw *hw, u8 index)
 {
 	struct clk_mux *mux = to_clk_mux(hw);

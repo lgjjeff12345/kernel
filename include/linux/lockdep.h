@@ -90,6 +90,7 @@ struct lock_chain {
 #define MAX_LOCKDEP_KEYS		(1UL << MAX_LOCKDEP_KEYS_BITS)
 #define INITIAL_CHAIN_KEY		-1
 
+/* 持有的锁信息 */
 struct held_lock {
 	/*
 	 * One-way hash of the dependency chain up to this point. We
@@ -595,6 +596,7 @@ DECLARE_PER_CPU(unsigned int, lockdep_recursion);
 
 #define __lockdep_enabled	(debug_locks && !this_cpu_read(lockdep_recursion))
 
+/*  */
 #define lockdep_assert_irqs_enabled()					\
 do {									\
 	WARN_ON_ONCE(__lockdep_enabled && !this_cpu_read(hardirqs_enabled)); \

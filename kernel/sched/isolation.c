@@ -63,6 +63,7 @@ bool housekeeping_test_cpu(int cpu, enum hk_flags flags)
 }
 EXPORT_SYMBOL_GPL(housekeeping_test_cpu);
 
+/* housekeeping初始化 */
 void __init housekeeping_init(void)
 {
 	if (!housekeeping_flags)
@@ -77,12 +78,18 @@ void __init housekeeping_init(void)
 	WARN_ON_ONCE(cpumask_empty(housekeeping_mask));
 }
 
+/* housekeeping设置函数
+   该函数从输入字符串中解析nonhousekeeping cpu的掩码，然后根据
+   该掩码与possible cpu的掩码共同及计算housekeeping cpu掩码。
+*/
 static int __init housekeeping_setup(char *str, enum hk_flags flags)
 {
 	cpumask_var_t non_housekeeping_mask;
 	cpumask_var_t tmp;
 
+	/* 从bootmem区域分配一个cpumask结构体 */
 	alloc_bootmem_cpumask_var(&non_housekeeping_mask);
+	/* 从用户传入的字符串中解析cpumask的值 */
 	if (cpulist_parse(str, non_housekeeping_mask) < 0) {
 		pr_warn("Housekeeping: nohz_full= or isolcpus= incorrect CPU range\n");
 		free_bootmem_cpumask_var(non_housekeeping_mask);
@@ -91,18 +98,22 @@ static int __init housekeeping_setup(char *str, enum hk_flags flags)
 
 	alloc_bootmem_cpumask_var(&tmp);
 	if (!housekeeping_flags) {
+		/* 根据启动参数传入的mask与possible cpu共同计算housekeeping_mask */
 		alloc_bootmem_cpumask_var(&housekeeping_mask);
 		cpumask_andnot(housekeeping_mask,
 			       cpu_possible_mask, non_housekeeping_mask);
 
+		/* 判断该掩码是否至少包含一个present cpu */
 		cpumask_andnot(tmp, cpu_present_mask, non_housekeeping_mask);
 		if (cpumask_empty(tmp)) {
 			pr_warn("Housekeeping: must include one present CPU, "
 				"using boot CPU:%d\n", smp_processor_id());
+			/* 若掩码不包含present cpu，则将当前cpu设置为present cpu */
 			__cpumask_set_cpu(smp_processor_id(), housekeeping_mask);
 			__cpumask_clear_cpu(smp_processor_id(), non_housekeeping_mask);
 		}
 	} else {
+		/* nohz情况下，只在present cpu上支持housekeeping */
 		cpumask_andnot(tmp, cpu_present_mask, non_housekeeping_mask);
 		if (cpumask_empty(tmp))
 			__cpumask_clear_cpu(smp_processor_id(), non_housekeeping_mask);
@@ -118,6 +129,7 @@ static int __init housekeeping_setup(char *str, enum hk_flags flags)
 
 	if ((flags & HK_FLAG_TICK) && !(housekeeping_flags & HK_FLAG_TICK)) {
 		if (IS_ENABLED(CONFIG_NO_HZ_FULL)) {
+			/* 只在non housekeeping的cpu上支持nohz模式 */
 			tick_nohz_full_setup(non_housekeeping_mask);
 		} else {
 			pr_warn("Housekeeping: nohz unsupported."
@@ -134,6 +146,7 @@ static int __init housekeeping_setup(char *str, enum hk_flags flags)
 	return 1;
 }
 
+/* nohz时需要设置以下的housekeeping标志 */
 static int __init housekeeping_nohz_full_setup(char *str)
 {
 	unsigned int flags;
@@ -145,6 +158,7 @@ static int __init housekeeping_nohz_full_setup(char *str)
 }
 __setup("nohz_full=", housekeeping_nohz_full_setup);
 
+/* housekeeping isol cpu设置 */
 static int __init housekeeping_isolcpus_setup(char *str)
 {
 	unsigned int flags = 0;
@@ -153,18 +167,21 @@ static int __init housekeeping_isolcpus_setup(char *str)
 	int len;
 
 	while (isalpha(*str)) {
+		/* 若配置了nohz，则设置HK_FLAG_TICK标志 */
 		if (!strncmp(str, "nohz,", 5)) {
 			str += 5;
 			flags |= HK_FLAG_TICK;
 			continue;
 		}
 
+		/* 若配置了domain，则设置HK_FLAG_DOMAIN */
 		if (!strncmp(str, "domain,", 7)) {
 			str += 7;
 			flags |= HK_FLAG_DOMAIN;
 			continue;
 		}
 
+		/* 若配置了managed_irq，则设置HK_FLAG_MANAGED_IRQ */
 		if (!strncmp(str, "managed_irq,", 12)) {
 			str += 12;
 			flags |= HK_FLAG_MANAGED_IRQ;
@@ -175,6 +192,7 @@ static int __init housekeeping_isolcpus_setup(char *str)
 		 * Skip unknown sub-parameter and validate that it is not
 		 * containing an invalid character.
 		 */
+		/* 跳过不合法的参数 */
 		for (par = str, len = 0; *str && *str != ','; str++, len++) {
 			if (!isalpha(*str) && *str != '_')
 				illegal = true;
@@ -185,11 +203,13 @@ static int __init housekeeping_isolcpus_setup(char *str)
 			return 0;
 		}
 
+		/* 循环以处理乱序参数 */
 		pr_info("isolcpus: Skipped unknown flag %.*s\n", len, par);
 		str++;
 	}
 
 	/* Default behaviour for isolcpus without flags */
+	/* 若未设置flag，则将HK_FLAG_DOMAIN设置为其默认标志 */
 	if (!flags)
 		flags |= HK_FLAG_DOMAIN;
 

@@ -237,6 +237,26 @@ extern struct arm64_ftr_reg arm64_ftr_reg_ctrel0;
  *     then a kernel panic is triggered.
  */
 
+/* 我们使用arm64_cpu_capabilities表示系统的特性，errata work arounds
+  （内核内部使用以及跟踪cpu_hwcaps），以及ELF HWCAPs（暴露给用户态）。
+  为了支持异构cpu的系统，我们需要确保在系统中探测到正确的能力，并且
+  通过合适的措施确保它们之间没有不兼容性。
+
+  每个能力都含有下面的属性列表：
+ （1）探测的scope：系统在运行时通过执行一些checks以探测给定的能力。
+	  它可以通过检查CPU ID feature register的值，或检查cpu model实现。
+	  能力结构体提供了一个回调（matches）以执行check操作。scope定义了
+	  check应该如何执行。
+	  a SCOPE_LOCAL_CPU：check所有cpu，并且探测是否至少有一个match。它
+		意味着我们需要在所有booting cpu上运行check操作，直到系统确定该能
+		力的状态已经完成
+	  b SCOPE_SYSTEM：检查所有的cpu，并探测器是否所有的cpu都match。这
+		意味着我们只在系统决定完成该能力的状态时运行一次check。
+	  c SCOPE_BOOT_CPU：只在primary boot cpu上执行feature check的操作。这种
+		类型用于在内核启动早期完成feature探测的check（在smp的其它cpu启动之前）
+ （2）
+*/
+
 
 /*
  * Decide how the capability is detected.
@@ -255,6 +275,7 @@ extern struct arm64_ftr_reg arm64_ftr_reg_ctrel0;
 	 ARM64_CPUCAP_SCOPE_LOCAL_CPU	|	\
 	 ARM64_CPUCAP_SCOPE_BOOT_CPU)
 
+/* cpu的scope */
 #define SCOPE_SYSTEM				ARM64_CPUCAP_SCOPE_SYSTEM
 #define SCOPE_LOCAL_CPU				ARM64_CPUCAP_SCOPE_LOCAL_CPU
 #define SCOPE_BOOT_CPU				ARM64_CPUCAP_SCOPE_BOOT_CPU
@@ -325,6 +346,7 @@ extern struct arm64_ftr_reg arm64_ftr_reg_ctrel0;
 #define ARM64_CPUCAP_BOOT_CPU_FEATURE                  \
 	(ARM64_CPUCAP_SCOPE_BOOT_CPU | ARM64_CPUCAP_PERMITTED_FOR_LATE_CPU)
 
+/* arm64的cpu能力结构体 */
 struct arm64_cpu_capabilities {
 	const char *desc;
 	u16 capability;
@@ -400,18 +422,21 @@ cpucap_multi_entry_cap_matches(const struct arm64_cpu_capabilities *entry,
 	return false;
 }
 
+/* vhe hyp代码 */
 static __always_inline bool is_vhe_hyp_code(void)
 {
 	/* Only defined for code run in VHE hyp context */
 	return __is_defined(__KVM_VHE_HYPERVISOR__);
 }
 
+/* nvhe hyp代码 */
 static __always_inline bool is_nvhe_hyp_code(void)
 {
 	/* Only defined for code run in NVHE hyp context */
 	return __is_defined(__KVM_NVHE_HYPERVISOR__);
 }
 
+/* hyp模式包含vhe和nvhe模式 */
 static __always_inline bool is_hyp_code(void)
 {
 	return is_vhe_hyp_code() || is_nvhe_hyp_code();

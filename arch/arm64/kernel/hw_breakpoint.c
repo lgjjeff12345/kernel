@@ -984,6 +984,7 @@ static inline void cpu_suspend_set_dbg_restorer(int (*hw_bp_restore)(unsigned in
 /*
  * One-time initialisation.
  */
+/* 硬件断点初始化接口 */
 static int __init arch_hw_breakpoint_init(void)
 {
 	int ret;

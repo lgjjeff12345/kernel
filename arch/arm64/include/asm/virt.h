@@ -65,6 +65,11 @@
  * Should the bootloader fail to do this, the two values will be different.
  * This allows the kernel to flag an error when the secondaries have come up.
  */
+/* 用于记录cpu的启动模式
+   一个实现正确的bootloader必须将所有的cpu以同一种模式启动。
+   这种情形下，两个32bit的值__boot_cpu_mode将包含相同的值（0：从EL1启动，
+   BOOT_CPU_MODE_EL2：从EL2启动）。
+*/
 extern u32 __boot_cpu_mode[2];
 
 void __hyp_set_vectors(phys_addr_t phys_vector_base);
@@ -73,6 +78,7 @@ void __hyp_reset_vectors(void);
 DECLARE_STATIC_KEY_FALSE(kvm_protected_mode_initialized);
 
 /* Reports the availability of HYP mode */
+/* 确认hyp模式是否可用 */
 static inline bool is_hyp_mode_available(void)
 {
 	/*
@@ -83,11 +89,13 @@ static inline bool is_hyp_mode_available(void)
 	    static_branch_likely(&kvm_protected_mode_initialized))
 		return true;
 
+	/* 若启动模式为EL2，则其支持hyp模式 */
 	return (__boot_cpu_mode[0] == BOOT_CPU_MODE_EL2 &&
 		__boot_cpu_mode[1] == BOOT_CPU_MODE_EL2);
 }
 
 /* Check if the bootloader has booted CPUs in different modes */
+/* 校验已启动cpu是否是通过不同模式启动的 */
 static inline bool is_hyp_mode_mismatched(void)
 {
 	/*
@@ -101,11 +109,13 @@ static inline bool is_hyp_mode_mismatched(void)
 	return __boot_cpu_mode[0] != __boot_cpu_mode[1];
 }
 
+/* 判断kernel是否处于hyp模式 */
 static inline bool is_kernel_in_hyp_mode(void)
 {
 	return read_sysreg(CurrentEL) == CurrentEL_EL2;
 }
 
+/* 判断是否含有vhe模式 */
 static __always_inline bool has_vhe(void)
 {
 	/*
@@ -120,8 +130,10 @@ static __always_inline bool has_vhe(void)
 		return cpus_have_final_cap(ARM64_HAS_VIRT_HOST_EXTN);
 }
 
+/* 是否使能了protected kvm */
 static __always_inline bool is_protected_kvm_enabled(void)
 {
+	/* vhe不含有protected模式 */
 	if (is_vhe_hyp_code())
 		return false;
 	else

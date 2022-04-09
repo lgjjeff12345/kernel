@@ -8227,7 +8227,7 @@ state_filter_match(unsigned long state_filter, struct task_struct *p)
 	return true;
 }
 
-
+/* 显示所有进程的状态 */
 void show_state_filter(unsigned int state_filter)
 {
 	struct task_struct *g, *p;
@@ -9257,6 +9257,7 @@ EXPORT_SYMBOL_GPL(__cant_migrate);
 #endif
 
 #ifdef CONFIG_MAGIC_SYSRQ
+/* 将rt进程改变为普通进程 */
 void normalize_rt_tasks(void)
 {
 	struct task_struct *g, *p;

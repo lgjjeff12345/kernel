@@ -105,6 +105,7 @@
 #define ARM_SMCCC_VENDOR_HYP_UID_KVM_REG_3	0x743a004dU
 
 /* KVM "vendor specific" services */
+/* kvm vendor相关的服务 */
 #define ARM_SMCCC_KVM_FUNC_FEATURES		0
 #define ARM_SMCCC_KVM_FUNC_PTP			1
 #define ARM_SMCCC_KVM_FUNC_FEATURES_2		127

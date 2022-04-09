@@ -104,6 +104,7 @@ static bool check_dr_size(size_t size, size_t *tot_size)
 	return true;
 }
 
+/* 分配一个device resource结构体 */
 static __always_inline struct devres * alloc_dr(dr_release_t release,
 						size_t size, gfp_t gfp, int nid)
 {
@@ -113,27 +114,34 @@ static __always_inline struct devres * alloc_dr(dr_release_t release,
 	if (!check_dr_size(size, &tot_size))
 		return NULL;
 
+	/* 内存分配 */
 	dr = kmalloc_node_track_caller(tot_size, gfp, nid);
 	if (unlikely(!dr))
 		return NULL;
 
+	/* 清空内存 */
 	memset(dr, 0, offsetof(struct devres, data));
 
+	/* 初始化节点，并设置其release回调函数 */
 	INIT_LIST_HEAD(&dr->node.entry);
 	dr->node.release = release;
 	return dr;
 }
 
+/* 设备资源添加 */
 static void add_dr(struct device *dev, struct devres_node *node)
 {
+	/* 将资源添加到设备的devres_head链表中 */
 	devres_log(dev, node, "ADD");
 	BUG_ON(!list_empty(&node->entry));
 	list_add_tail(&node->entry, &dev->devres_head);
 }
 
+/* 替换设备的资源 */
 static void replace_dr(struct device *dev,
 		       struct devres_node *old, struct devres_node *new)
 {
+	/* 链表节点替换 */
 	devres_log(dev, old, "REPLACE");
 	BUG_ON(!list_empty(&new->entry));
 	list_replace(&old->entry, &new->entry);
@@ -154,11 +162,13 @@ static void replace_dr(struct device *dev,
  * RETURNS:
  * Pointer to allocated devres on success, NULL on failure.
  */
+/* 分配一个设备资源的数据 */
 void *__devres_alloc_node(dr_release_t release, size_t size, gfp_t gfp, int nid,
 			  const char *name)
 {
 	struct devres *dr;
 
+	/* 分配一个device resource结构体 */
 	dr = alloc_dr(release, size, gfp | __GFP_ZERO, nid);
 	if (unlikely(!dr))
 		return NULL;
@@ -182,6 +192,7 @@ EXPORT_SYMBOL_GPL(__devres_alloc_node);
  * RETURNS:
  * 	void
  */
+/* 遍历设备的resource，并分别执行回调函数fn */
 void devres_for_each_res(struct device *dev, dr_release_t release,
 			dr_match_t match, void *match_data,
 			void (*fn)(struct device *, void *, void *),
@@ -215,11 +226,13 @@ EXPORT_SYMBOL_GPL(devres_for_each_res);
  *
  * Free devres created with devres_alloc().
  */
+/* 释放设备资源数据 */
 void devres_free(void *res)
 {
 	if (res) {
 		struct devres *dr = container_of(res, struct devres, data);
 
+		/* 释放dr的内存 */
 		BUG_ON(!list_empty(&dr->node.entry));
 		kfree(dr);
 	}
@@ -235,27 +248,32 @@ EXPORT_SYMBOL_GPL(devres_free);
  * using devres_alloc().  On driver detach, the associated release
  * function will be invoked and devres will be freed automatically.
  */
+/* 注册一个设备资源 */
 void devres_add(struct device *dev, void *res)
 {
 	struct devres *dr = container_of(res, struct devres, data);
 	unsigned long flags;
 
+	/* 添加设备资源 */
 	spin_lock_irqsave(&dev->devres_lock, flags);
 	add_dr(dev, &dr->node);
 	spin_unlock_irqrestore(&dev->devres_lock, flags);
 }
 EXPORT_SYMBOL_GPL(devres_add);
 
+/* 查找与给定资源匹配的资源 */
 static struct devres *find_dr(struct device *dev, dr_release_t release,
 			      dr_match_t match, void *match_data)
 {
 	struct devres_node *node;
 
+	/* 遍历设备的资源 */
 	list_for_each_entry_reverse(node, &dev->devres_head, entry) {
 		struct devres *dr = container_of(node, struct devres, node);
 
 		if (node->release != release)
 			continue;
+		/* 判断其是否匹配 */
 		if (match && !match(dev, dr->data, match_data))
 			continue;
 		return dr;
@@ -278,6 +296,7 @@ static struct devres *find_dr(struct device *dev, dr_release_t release,
  * RETURNS:
  * Pointer to found devres, NULL if not found.
  */
+/* 查找设备的资源 */
 void * devres_find(struct device *dev, dr_release_t release,
 		   dr_match_t match, void *match_data)
 {
@@ -308,6 +327,7 @@ EXPORT_SYMBOL_GPL(devres_find);
  * RETURNS:
  * Pointer to found or added devres.
  */
+/* 从设备的资源列表中查找给定资源，若查找失败，则将其添加到设备的资源列表中 */
 void * devres_get(struct device *dev, void *new_res,
 		  dr_match_t match, void *match_data)
 {
@@ -731,6 +751,7 @@ static void devm_action_release(struct device *dev, void *res)
  * This adds a custom action to the list of managed resources so that
  * it gets executed as part of standard resource unwinding.
  */
+/* 添加一个action资源 */
 int devm_add_action(struct device *dev, void (*action)(void *), void *data)
 {
 	struct action_devres *devres;
@@ -757,6 +778,7 @@ EXPORT_SYMBOL_GPL(devm_add_action);
  * Removes instance of @action previously added by devm_add_action().
  * Both action and data should match one of the existing entries.
  */
+/* 移除一个action资源 */
 void devm_remove_action(struct device *dev, void (*action)(void *), void *data)
 {
 	struct action_devres devres = {
@@ -818,6 +840,7 @@ static int devm_kmalloc_match(struct device *dev, void *res, void *data)
  * RETURNS:
  * Pointer to allocated memory on success, NULL on failure.
  */
+/* devm的kmalloc函数 */
 void *devm_kmalloc(struct device *dev, size_t size, gfp_t gfp)
 {
 	struct devres *dr;
@@ -826,6 +849,7 @@ void *devm_kmalloc(struct device *dev, size_t size, gfp_t gfp)
 		return ZERO_SIZE_PTR;
 
 	/* use raw alloc_dr for kmalloc caller tracing */
+	/* 分配一个alloc资源结构体 */
 	dr = alloc_dr(devm_kmalloc_release, size, gfp, dev_to_node(dev));
 	if (unlikely(!dr))
 		return NULL;
@@ -834,6 +858,7 @@ void *devm_kmalloc(struct device *dev, size_t size, gfp_t gfp)
 	 * This is named devm_kzalloc_release for historical reasons
 	 * The initial implementation did not support kmalloc, only kzalloc
 	 */
+	/* 将其添加到设备设备资源链表中 */
 	set_node_dbginfo(&dr->node, "devm_kzalloc_release", size);
 	devres_add(dev, dr->data);
 	return dr->data;
@@ -856,6 +881,7 @@ EXPORT_SYMBOL_GPL(devm_kmalloc);
  * resources when new_size is zero). The contents of the memory are preserved
  * up to the lesser of new and old sizes.
  */
+/* 资源管理的krealloc函数 */
 void *devm_krealloc(struct device *dev, void *ptr, size_t new_size, gfp_t gfp)
 {
 	size_t total_new_size, total_old_size;
@@ -1099,6 +1125,7 @@ static int devm_pages_match(struct device *dev, void *res, void *p)
 	return devres->addr == target->addr;
 }
 
+/* devm的pages release函数 */
 static void devm_pages_release(struct device *dev, void *res)
 {
 	struct pages_devres *devres = res;
@@ -1118,7 +1145,7 @@ static void devm_pages_release(struct device *dev, void *res)
  * RETURNS:
  * Address of allocated memory on success, 0 on failure.
  */
-
+/* devm的获取空闲page接口 */
 unsigned long devm_get_free_pages(struct device *dev,
 				  gfp_t gfp_mask, unsigned int order)
 {
@@ -1130,6 +1157,7 @@ unsigned long devm_get_free_pages(struct device *dev,
 	if (unlikely(!addr))
 		return 0;
 
+	/* 分配一个devres结构 */
 	devres = devres_alloc(devm_pages_release,
 			      sizeof(struct pages_devres), GFP_KERNEL);
 	if (unlikely(!devres)) {
@@ -1140,6 +1168,7 @@ unsigned long devm_get_free_pages(struct device *dev,
 	devres->addr = addr;
 	devres->order = order;
 
+	/* 将devres添加到设备资源链表中 */
 	devres_add(dev, devres);
 	return addr;
 }

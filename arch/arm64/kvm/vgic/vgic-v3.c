@@ -557,7 +557,7 @@ struct vgic_redist_region *vgic_v3_rdist_region_from_index(struct kvm *kvm,
 	return NULL;
 }
 
-
+/* vgic-v3资源映射函数 */
 int vgic_v3_map_resources(struct kvm *kvm)
 {
 	struct vgic_dist *dist = &kvm->arch.vgic;

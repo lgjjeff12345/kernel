@@ -349,6 +349,39 @@ typedef void (*regmap_unlock)(void *);
  *		 HWLOCK_IRQ or 0.
  * @can_sleep: Optional, specifies whether regmap operations can sleep.
  */
+/* 一个设备的寄存器map配置
+   name：可选的regmap名字，当一个设备含有多个寄存器region时比较有用
+   reg_bit：寄存器地址的bit数，该参数是必选的
+   reg_stride：寄存器地址stride，有效的寄存器地址是该值的整数倍，若其为0，则使用值1
+   pad_bits：寄存器和value之间padding的bit数
+   val_bits：寄存器值的bit数，该值是必须的
+   writeable_reg：可选的回调，若寄存器可写则返回true
+   readable_reg：可选的回调，若寄存器可读则返回true
+   volatile_reg：可选的回调，若寄存器不可cache则返回true
+   precious_reg：可选的回调，若寄存器不应该被驱动之外的调用读则返回true
+   writeable_noinc_reg：可选的回调，若寄存器支持不增加寄存器地址的多个写操作则返回true
+   readable_noinc_reg：可选的回调，若寄存器支持不增加寄存器地址的多个读操作则返回true
+   disable_locking：寄存器读写由外部保护，或其可确保不会被多线程访问
+   reg_read：可选回调，若该回调被设置则将用于寄存器的所有读操作
+   reg_write：可选回调，若该回调被设置则将用于寄存器的所有写操作
+   fast_io：寄存器IO为fast，若设置该标志则使用spinlock代替mutex作为寄存器操作的锁
+   max_register：可选参数，用于指定最大的有效寄存器地址
+   wr_table：可选参数，用于指向一个regmap_access_table结构体，以指定写访问的有效范围
+   rd_table：可选参数，用于指向一个regmap_access_table结构体，以指定读访问的有效范围
+   reg_defaults：寄存器的上电值
+   num_reg_defaults：reg_defaults的参数个数
+   read_flag_mask：执行读操作时，寄存器在高字节需要设置的掩码
+   write_flag_mask：执行写操作时，寄存器在高字节需要设置的掩码
+   use_relaxed_mmio：若设置，则mmio读写操作不使用内存屏障
+   use_single_read：若设置了该标志，则将bulk读操作转换为多个single读操作
+   use_single_write：若设置了该标志，则将bulk写操作转换为多个single写操作
+   can_multi_write：若设置了该标志，则在bulk写操作中支持multi写模式
+   cache_type：实际的cache类型
+   ranges：虚拟地址范围的配置项数组
+   num_ranges：entry配置range的数量
+   hwlock_mode：硬件spinlock模式
+   can_sleep：可选，指定regmap操作是否可以睡眠
+*/
 struct regmap_config {
 	const char *name;
 
@@ -429,6 +462,8 @@ struct regmap_config {
  *     1. page selector register update;
  *     2. access through data window registers.
  */
+/* 非直接反问或paged寄存器的配置
+*/
 struct regmap_range_cfg {
 	const char *name;
 
@@ -505,6 +540,7 @@ typedef void (*regmap_hw_free_context)(void *context);
  * @max_raw_write: Max raw write size that can be used on the bus.
  * @free_on_exit: kfree this on exit of regmap
  */
+/* 为寄存器map infrastructure描述一个硬件总线 */
 struct regmap_bus {
 	bool fast_io;
 	regmap_hw_write write;
@@ -1203,6 +1239,7 @@ int regmap_register_patch(struct regmap *map, const struct reg_sequence *regs,
 int regmap_parse_val(struct regmap *map, const void *buf,
 				unsigned int *val);
 
+/* 寄存器地址是否位于给定的range中 */
 static inline bool regmap_reg_in_range(unsigned int reg,
 				       const struct regmap_range *range)
 {

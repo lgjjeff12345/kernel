@@ -566,14 +566,17 @@ flush_signal_handlers(struct task_struct *t, int force_default)
 
 bool unhandled_signal(struct task_struct *tsk, int sig)
 {
+	/* 获取给定进程中，该信号对应的信号处理函数 */
 	void __user *handler = tsk->sighand->action[sig-1].sa.sa_handler;
 	if (is_global_init(tsk))
 		return true;
 
+	/* 该处理函数不是ignore或default，则返回false */
 	if (handler != SIG_IGN && handler != SIG_DFL)
 		return false;
 
 	/* if ptraced, let the tracer determine */
+	/* 若该线程正在被trace，则由tracer决定 */
 	return !tsk->ptrace;
 }
 
@@ -1296,6 +1299,7 @@ __group_send_sig_info(int sig, struct kernel_siginfo *info, struct task_struct *
 	return send_signal(sig, info, p, PIDTYPE_TGID);
 }
 
+/* 向给定进程发送信号 */
 int do_send_sig_info(int sig, struct kernel_siginfo *info, struct task_struct *p,
 			enum pid_type type)
 {
@@ -4027,17 +4031,23 @@ void __weak sigaction_compat_abi(struct k_sigaction *act,
 {
 }
 
+/* 执行信号处理函数 */
 int do_sigaction(int sig, struct k_sigaction *act, struct k_sigaction *oact)
 {
 	struct task_struct *p = current, *t;
 	struct k_sigaction *k;
 	sigset_t mask;
 
+	/* sig_kernel_only信号只能被内核处理，不能设置sigaction。
+       这种信号有sigkill和sigstop
+	*/
 	if (!valid_signal(sig) || sig < 1 || (act && sig_kernel_only(sig)))
 		return -EINVAL;
 
+	/* 获取当前进程对该信号的处理函数 */
 	k = &p->sighand->action[sig-1];
 
+	/* 自旋锁 */
 	spin_lock_irq(&p->sighand->siglock);
 	if (oact)
 		*oact = *k;
@@ -4587,6 +4597,7 @@ __weak const char *arch_vma_name(struct vm_area_struct *vma)
 	return NULL;
 }
 
+/* 编译时的信号号校验 */
 static inline void siginfo_buildtime_checks(void)
 {
 	BUILD_BUG_ON(sizeof(struct siginfo) != SI_MAX_SIZE);
@@ -4659,10 +4670,12 @@ static inline void siginfo_buildtime_checks(void)
 #endif
 }
 
+/* 初始化信号处理 */
 void __init signals_init(void)
 {
 	siginfo_buildtime_checks();
 
+	/* 分配一个sigqueue的slab pool */
 	sigqueue_cachep = KMEM_CACHE(sigqueue, SLAB_PANIC);
 }
 

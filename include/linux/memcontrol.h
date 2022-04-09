@@ -236,6 +236,9 @@ struct obj_cgroup {
  * statistics based on the statistics developed by Rik Van Riel for clock-pro,
  * to help the administrator determine what knobs to tune.
  */
+/* 内存控制器数据结构
+   内存控制器控制每个cgroup的page cahe和rss
+*/
 struct mem_cgroup {
 	struct cgroup_subsys_state css;
 

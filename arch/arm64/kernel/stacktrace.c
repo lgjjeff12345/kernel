@@ -210,6 +210,7 @@ void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk,
 	put_task_stack(tsk);
 }
 
+/* 显示给定线程的调用栈 */
 void show_stack(struct task_struct *tsk, unsigned long *sp, const char *loglvl)
 {
 	dump_backtrace(NULL, tsk, loglvl);

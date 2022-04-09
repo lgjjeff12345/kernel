@@ -191,6 +191,7 @@ struct pt_regs {
 	u64 orig_x0;
 #ifdef __AARCH64EB__
 	u32 unused2;
+	/*  用于表明当前是否处于系统调用流程中 */
 	s32 syscallno;
 #else
 	s32 syscallno;
@@ -206,11 +207,13 @@ struct pt_regs {
 	u64 exit_rcu;
 };
 
+/* 当前是否正在执行系统调用 */
 static inline bool in_syscall(struct pt_regs const *regs)
 {
 	return regs->syscallno != NO_SYSCALL;
 }
 
+/* 不处于系统调用中 */
 static inline void forget_syscall(struct pt_regs *regs)
 {
 	regs->syscallno = NO_SYSCALL;

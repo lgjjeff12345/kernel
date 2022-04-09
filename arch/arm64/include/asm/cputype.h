@@ -51,6 +51,7 @@
 #define MIDR_CPU_MODEL_MASK (MIDR_IMPLEMENTOR_MASK | MIDR_PARTNUM_MASK | \
 			     MIDR_ARCHITECTURE_MASK)
 
+/* soc产商 */
 #define ARM_CPU_IMP_ARM			0x41
 #define ARM_CPU_IMP_APM			0x50
 #define ARM_CPU_IMP_CAVIUM		0x43
@@ -154,6 +155,11 @@
  *		  MIDR_CPU_VAR_REV
  * @rv_max	- Maximum value for the variant/revision for the range.
  */
+/* 表示一个给定cpu模型和一组variant/revision值的midr范围
+   model：由MIDR_CPU_MODEL定义的cpu模型
+   rv_min：由MIDR_CPU_VAR_REV定义的revision/variant最小值
+   rv_max：variant/revision范围的最大值
+*/
 struct midr_range {
 	u32 model;
 	u32 rv_min;

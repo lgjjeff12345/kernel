@@ -137,8 +137,10 @@ static inline void ptrace_hw_copy_thread(struct task_struct *task)
 #endif
 
 /* Determine number of BRP registers available. */
+/* 确定可用的断点寄存器 */
 static inline int get_num_brps(void)
 {
+	/* 读取dfr0寄存器的值 */
 	u64 dfr0 = read_sanitised_ftr_reg(SYS_ID_AA64DFR0_EL1);
 	return 1 +
 		cpuid_feature_extract_unsigned_field(dfr0,

@@ -27,6 +27,7 @@
 #include <asm/irq_regs.h>
 #include <linux/kvm_para.h>
 
+/* softlockup：中断能抢占，但调度器已经停止调度了 */
 static DEFINE_MUTEX(watchdog_mutex);
 
 #if defined(CONFIG_HARDLOCKUP_DETECTOR) || defined(CONFIG_HAVE_NMI_WATCHDOG)
@@ -71,6 +72,7 @@ void __init hardlockup_detector_disable(void)
 	nmi_watchdog_user_enabled = 0;
 }
 
+/* hardlockup的panic方式设置 */
 static int __init hardlockup_panic_setup(char *str)
 {
 	if (!strncmp(str, "panic", 5))
@@ -141,6 +143,7 @@ void __weak watchdog_nmi_start(void) { }
  * Caller needs to make sure that the NMI/perf watchdogs are off, so this
  * can't race with watchdog_nmi_disable().
  */
+/* 更新sysctl的使能位，包括nmi看门狗和soft看门狗的使能 */
 static void lockup_detector_update_enable(void)
 {
 	watchdog_enabled = 0;
@@ -213,6 +216,7 @@ static void __lockup_detector_cleanup(void);
  * the thresholds with a factor: we make the soft threshold twice the amount of
  * time the hard threshold is.
  */
+/* softlockup的时间比hardlockup的时间更长，所以其值为hardlockup的两遍 */
 static int get_softlockup_thresh(void)
 {
 	return watchdog_thresh * 2;
@@ -247,6 +251,7 @@ static void update_report_ts(void)
 }
 
 /* Commands for resetting the watchdog */
+/* 更新wachdog的touch时间 */
 static void update_touch_ts(void)
 {
 	__this_cpu_write(watchdog_touch_ts, get_timestamp());
@@ -270,6 +275,20 @@ notrace void touch_softlockup_watchdog_sched(void)
 	raw_cpu_write(watchdog_report_ts, SOFTLOCKUP_DELAY_REPORT);
 }
 
+/* touch softlockup看门狗
+   该函数用于重置watchdog_report_ts，它主要在电源管理接口中被调用。如：
+   kernel/time/timekeeping.c:1811
+   kernel/time/tick-common.c:565
+   kernel/power/hibernate.c:503
+   kernel/power/snapshot.c:885
+   kernel/panic.c:356
+   fs/xfs/xfs_pwork.c:120
+   lib/nmi_backtrace.c:75
+   drivers/mtd/nand/raw/nand_legacy.c:182
+   drivers/mtd/nand/raw/nand_legacy.c:236
+   drivers/video/fbdev/nvidia/nv_accel.c:78
+   在长时间循环的函数中，应加入本函数以避免被错误地判断为softlockup???
+*/
 notrace void touch_softlockup_watchdog(void)
 {
 	touch_softlockup_watchdog_sched();
@@ -277,6 +296,7 @@ notrace void touch_softlockup_watchdog(void)
 }
 EXPORT_SYMBOL(touch_softlockup_watchdog);
 
+/* 重启所有的softlockup看门狗，该函数为其它模块提供喂狗接口 */
 void touch_all_softlockup_watchdogs(void)
 {
 	int cpu;
@@ -296,18 +316,26 @@ void touch_all_softlockup_watchdogs(void)
 	}
 }
 
+/* 该函数与touch_softlockup_watchdog和touch_all_softlockup_watchdogs一起，
+   为其它模块提供喂狗接口
+
+*/
 void touch_softlockup_watchdog_sync(void)
 {
 	__this_cpu_write(softlockup_touch_sync, true);
 	__this_cpu_write(watchdog_report_ts, SOFTLOCKUP_DELAY_REPORT);
 }
 
+/* 判断当前cpu是否处于softlockup状态 */
 static int is_softlockup(unsigned long touch_ts,
 			 unsigned long period_ts,
 			 unsigned long now)
 {
 	if ((watchdog_enabled & SOFT_WATCHDOG_ENABLED) && watchdog_thresh){
 		/* Warn about unreasonable delays. */
+		/* 超过watchdog_thresh * 2长的周期没有更新period_ts了。即系统
+		   处于softlockup状态
+		*/
 		if (time_after(now, period_ts + get_softlockup_thresh()))
 			return now - touch_ts;
 	}
@@ -315,6 +343,7 @@ static int is_softlockup(unsigned long touch_ts,
 }
 
 /* watchdog detector functions */
+/* 判断是否为hardware lockup */
 bool is_hardlockup(void)
 {
 	unsigned long hrint = __this_cpu_read(hrtimer_interrupts);
@@ -342,6 +371,11 @@ static DEFINE_PER_CPU(struct cpu_stop_work, softlockup_stop_work);
  * for more than 2*watchdog_thresh seconds then the debug-printout
  * triggers in watchdog_timer_fn().
  */
+/* 喂狗函数
+   它在一个采样周期内（默认为4秒）只会运行一次，以reset softlockup
+   时间戳。若其delay时间超过2 * watchdog_thresh秒，则会在watchdog_timer_fn
+   中触发debug打印信息
+*/
 static int softlockup_fn(void *data)
 {
 	update_touch_ts();
@@ -351,6 +385,7 @@ static int softlockup_fn(void *data)
 }
 
 /* watchdog kicker functions */
+/* watchdog kicker的处理函数 */
 static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 {
 	unsigned long touch_ts, period_ts, now;
@@ -365,7 +400,9 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 	watchdog_interrupt_count();
 
 	/* kick the softlockup detector */
+	/* 若当前没有等待的完成量，则调用stop调度类，执行更新时间操作 */
 	if (completion_done(this_cpu_ptr(&softlockup_completion))) {
+		/* 重新初始化完成量 */
 		reinit_completion(this_cpu_ptr(&softlockup_completion));
 		stop_one_cpu_nowait(smp_processor_id(),
 				softlockup_fn, NULL,
@@ -373,6 +410,7 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 	}
 
 	/* .. and repeat */
+	/* 更新下一次检测时间 */
 	hrtimer_forward_now(hrtimer, ns_to_ktime(sample_period));
 
 	/*
@@ -380,6 +418,7 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 	 * when a virtual machine is stopped by the host or when the watchog
 	 * is touched from NMI.
 	 */
+	/* 读取当前时间 */
 	now = get_timestamp();
 	/*
 	 * If a virtual machine is stopped by the host it can look to
@@ -410,6 +449,7 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 
 	/* Check for a softlockup. */
 	touch_ts = __this_cpu_read(watchdog_touch_ts);
+	/* 判断当前cpu是否处于softlockup状态 */
 	duration = is_softlockup(touch_ts, period_ts, now);
 	if (unlikely(duration)) {
 		/*
@@ -447,6 +487,7 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 	return HRTIMER_RESTART;
 }
 
+/* 使能看门狗 */
 static void watchdog_enable(unsigned int cpu)
 {
 	struct hrtimer *hrtimer = this_cpu_ptr(&watchdog_hrtimer);
@@ -461,18 +502,23 @@ static void watchdog_enable(unsigned int cpu)
 	 * Start the timer first to prevent the NMI watchdog triggering
 	 * before the timer has a chance to fire.
 	 */
+	/* 初始化高精度定时器 */
 	hrtimer_init(hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_HARD);
 	hrtimer->function = watchdog_timer_fn;
+	printk("%s ###### watchdog time %d\n", __func__, sample_period / 1000000);
 	hrtimer_start(hrtimer, ns_to_ktime(sample_period),
 		      HRTIMER_MODE_REL_PINNED_HARD);
 
 	/* Initialize timestamp */
+	/* 更新wachdog的touch时间 */
 	update_touch_ts();
 	/* Enable the perf event */
+	/* 使能nmi watchdog监测 */
 	if (watchdog_enabled & NMI_WATCHDOG_ENABLED)
 		watchdog_nmi_enable(cpu);
 }
 
+/* 停止当前cpu的softlockup watchdog */
 static void watchdog_disable(unsigned int cpu)
 {
 	struct hrtimer *hrtimer = this_cpu_ptr(&watchdog_hrtimer);
@@ -484,41 +530,52 @@ static void watchdog_disable(unsigned int cpu)
 	 * between disabling the timer and disabling the perf event causes
 	 * the perf NMI to detect a false positive.
 	 */
+	/* 删除watchdog对应的hrtimer */
 	watchdog_nmi_disable(cpu);
 	hrtimer_cancel(hrtimer);
+	/* 等待softlockup完成 */
 	wait_for_completion(this_cpu_ptr(&softlockup_completion));
 }
 
+/* 停止当前cpu的softlockup watchdog */
 static int softlockup_stop_fn(void *data)
 {
 	watchdog_disable(smp_processor_id());
 	return 0;
 }
 
+/* 停止所有cpu的softlockup */
 static void softlockup_stop_all(void)
 {
 	int cpu;
 
+	/* 若softlockup未初始化，则直接返回 */
 	if (!softlockup_initialized)
 		return;
 
+	/* 对所有支持watchdog的cpu调用以下ipi中断 */
 	for_each_cpu(cpu, &watchdog_allowed_mask)
 		smp_call_on_cpu(cpu, softlockup_stop_fn, NULL, false);
 
+	/* 清空允许的watchdog掩码 */
 	cpumask_clear(&watchdog_allowed_mask);
 }
 
+/* softlockup启动函数 */
 static int softlockup_start_fn(void *data)
 {
+	/* 使能看门狗 */
 	watchdog_enable(smp_processor_id());
 	return 0;
 }
 
+/* 启动所有的softlockup监测 */
 static void softlockup_start_all(void)
 {
 	int cpu;
 
 	cpumask_copy(&watchdog_allowed_mask, &watchdog_cpumask);
+	/* 对所有支持softlockup的cpu，通过ipi执行其启动函数 */
 	for_each_cpu(cpu, &watchdog_allowed_mask)
 		smp_call_on_cpu(cpu, softlockup_start_fn, NULL, false);
 }
@@ -537,17 +594,24 @@ int lockup_detector_offline_cpu(unsigned int cpu)
 	return 0;
 }
 
+/* lockup探测器重配置 */
 static void lockup_detector_reconfigure(void)
 {
 	cpus_read_lock();
+	/* 停止nmi看门狗 */
 	watchdog_nmi_stop();
 
+	/* 停止所有cpu的softlockup */
 	softlockup_stop_all();
+	/* 设置采样周期 */
 	set_sample_period();
+	/* 更新sysctl的使能位，包括nmi看门狗和soft看门狗的使能 */
 	lockup_detector_update_enable();
+	/* 启动所有的softlockup监测 */
 	if (watchdog_enabled && watchdog_thresh)
 		softlockup_start_all();
 
+	/* 启动nmi监测 */
 	watchdog_nmi_start();
 	cpus_read_unlock();
 	/*
@@ -560,12 +624,14 @@ static void lockup_detector_reconfigure(void)
 /*
  * Create the watchdog infrastructure and configure the detector(s).
  */
+/* 创建watchdog基础实施，并配探测器 */
 static __init void lockup_detector_setup(void)
 {
 	/*
 	 * If sysctl is off and watchdog got disabled on the command line,
 	 * nothing to do here.
 	 */
+	/* 更新sysctl的使能位，包括nmi看门狗和soft看门狗的使能 */
 	lockup_detector_update_enable();
 
 	if (!IS_ENABLED(CONFIG_SYSCTL) &&
@@ -741,15 +807,20 @@ int proc_watchdog_cpumask(struct ctl_table *table, int write,
 	return err;
 }
 #endif /* CONFIG_SYSCTL */
-
+/* 初始化lockup探测器 */
 void __init lockup_detector_init(void)
 {
+	/* 是否使能了full nohz tick功能
+	   默认情况关闭使能了full nohz tick核的watchdog
+	*/
 	if (tick_nohz_full_enabled())
 		pr_info("Disabling watchdog on nohz_full cores by default\n");
 
+	/* 初始化watchdog cpumask，该cpu mask为housekeeping的timer掩码 */
 	cpumask_copy(&watchdog_cpumask,
 		     housekeeping_cpumask(HK_FLAG_TIMER));
 
+	/* nmi watchdog是否可用 */
 	if (!watchdog_nmi_probe())
 		nmi_watchdog_available = true;
 	lockup_detector_setup();

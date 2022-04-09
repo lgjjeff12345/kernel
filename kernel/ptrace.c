@@ -557,8 +557,10 @@ static bool __ptrace_detach(struct task_struct *tracer, struct task_struct *p)
 	return dead;
 }
 
+/* detach一个被trace的线程 */
 static int ptrace_detach(struct task_struct *child, unsigned int data)
 {
+	/* 判断信号是否合法 */
 	if (!valid_signal(data))
 		return -EIO;
 
@@ -653,6 +655,7 @@ int ptrace_writedata(struct task_struct *tsk, char __user *src, unsigned long ds
 	return copied;
 }
 
+/* 设置ptrace的选项，它位于task struct的ptrace成员中 */
 static int ptrace_setoptions(struct task_struct *child, unsigned long data)
 {
 	unsigned flags;
@@ -682,6 +685,7 @@ static int ptrace_setoptions(struct task_struct *child, unsigned long data)
 	return 0;
 }
 
+/* ptrace获取信号信息，它位于task struct的last_siginfo中 */
 static int ptrace_getsiginfo(struct task_struct *child, kernel_siginfo_t *info)
 {
 	unsigned long flags;
@@ -698,6 +702,7 @@ static int ptrace_getsiginfo(struct task_struct *child, kernel_siginfo_t *info)
 	return error;
 }
 
+/* ptrace设置信号信息，它位于task struct的last_siginfo中 */
 static int ptrace_setsiginfo(struct task_struct *child, const kernel_siginfo_t *info)
 {
 	unsigned long flags;
@@ -1041,17 +1046,21 @@ int ptrace_request(struct task_struct *child, long request,
 	switch (request) {
 	case PTRACE_PEEKTEXT:
 	case PTRACE_PEEKDATA:
+		/* 读取内存数据 */
 		return generic_ptrace_peekdata(child, addr, data);
 	case PTRACE_POKETEXT:
 	case PTRACE_POKEDATA:
+		/* 修改内存数据 */
 		return generic_ptrace_pokedata(child, addr, data);
 
 #ifdef PTRACE_OLDSETOPTIONS
 	case PTRACE_OLDSETOPTIONS:
 #endif
+	/* 设置ptrace的选项，它位于task struct的ptrace成员中 */
 	case PTRACE_SETOPTIONS:
 		ret = ptrace_setoptions(child, data);
 		break;
+	/* 获取ptrace状态信息 */
 	case PTRACE_GETEVENTMSG:
 		ret = put_user(child->ptrace_message, datalp);
 		break;
@@ -1093,6 +1102,7 @@ int ptrace_request(struct task_struct *child, long request,
 		break;
 	}
 
+	/* 设置信号掩码 */
 	case PTRACE_SETSIGMASK: {
 		sigset_t new_set;
 
@@ -1176,6 +1186,7 @@ int ptrace_request(struct task_struct *child, long request,
 		unlock_task_sighand(child, &flags);
 		break;
 
+	/* detach一个线程 */
 	case PTRACE_DETACH:	 /* detach a process that was attached. */
 		ret = ptrace_detach(child, data);
 		break;
@@ -1319,6 +1330,7 @@ SYSCALL_DEFINE4(ptrace, long, request, long, pid, unsigned long, addr,
 	return ret;
 }
 
+/* 读取内存数据 */
 int generic_ptrace_peekdata(struct task_struct *tsk, unsigned long addr,
 			    unsigned long data)
 {
@@ -1331,6 +1343,7 @@ int generic_ptrace_peekdata(struct task_struct *tsk, unsigned long addr,
 	return put_user(tmp, (unsigned long __user *)data);
 }
 
+/* 修改内存数据 */
 int generic_ptrace_pokedata(struct task_struct *tsk, unsigned long addr,
 			    unsigned long data)
 {
@@ -1354,6 +1367,7 @@ int compat_ptrace_request(struct task_struct *child, compat_long_t request,
 	switch (request) {
 	case PTRACE_PEEKTEXT:
 	case PTRACE_PEEKDATA:
+		/* 从给定线程的vm空间读取内存信息，并将其返回用户空间 */
 		ret = ptrace_access_vm(child, addr, &word, sizeof(word),
 				FOLL_FORCE);
 		if (ret != sizeof(word))
@@ -1364,15 +1378,18 @@ int compat_ptrace_request(struct task_struct *child, compat_long_t request,
 
 	case PTRACE_POKETEXT:
 	case PTRACE_POKEDATA:
+		/* 将用户给定的数据，写入特定的vma空间中 */
 		ret = ptrace_access_vm(child, addr, &data, sizeof(data),
 				FOLL_FORCE | FOLL_WRITE);
 		ret = (ret != sizeof(data) ? -EIO : 0);
 		break;
 
+		/* 将该线程的ptrace状态信息返回给用户空间 */
 	case PTRACE_GETEVENTMSG:
 		ret = put_user((compat_ulong_t) child->ptrace_message, datap);
 		break;
 
+		/* ptrace获取信号信息，它位于task struct的last_siginfo中 */
 	case PTRACE_GETSIGINFO:
 		ret = ptrace_getsiginfo(child, &siginfo);
 		if (!ret)
@@ -1381,6 +1398,7 @@ int compat_ptrace_request(struct task_struct *child, compat_long_t request,
 				&siginfo);
 		break;
 
+	/* ptrace设置信号信息，它位于task struct的last_siginfo中 */
 	case PTRACE_SETSIGINFO:
 		ret = copy_siginfo_from_user32(
 			&siginfo, (struct compat_siginfo __user *) datap);

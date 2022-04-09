@@ -161,6 +161,7 @@ static inline bool is_sysrq_oom(struct oom_control *oc)
 }
 
 /* return true if the task is not adequate as candidate victim task. */
+/* 内核线程不能被杀死，tgid为init的线程也不能被杀死 */
 static bool oom_unkillable_task(struct task_struct *p)
 {
 	if (is_global_init(p))
@@ -200,6 +201,7 @@ static bool should_dump_unreclaim_slab(void)
  * predictable as possible.  The goal is to return the highest value for the
  * task consuming the most memory to avoid subsequent oom failures.
  */
+/* oom分数计算函数 */
 long oom_badness(struct task_struct *p, unsigned long totalpages)
 {
 	long points;
@@ -217,6 +219,7 @@ long oom_badness(struct task_struct *p, unsigned long totalpages)
 	 * unkillable or have been already oom reaped or the are in
 	 * the middle of vfork
 	 */
+	/* 该进程的oom分数调整系数。可通过/proc/xx/oom_score_adj设置或查询 */
 	adj = (long)p->signal->oom_score_adj;
 	if (adj == OOM_SCORE_ADJ_MIN ||
 			test_bit(MMF_OOM_SKIP, &p->mm->flags) ||
@@ -229,11 +232,13 @@ long oom_badness(struct task_struct *p, unsigned long totalpages)
 	 * The baseline for the badness score is the proportion of RAM that each
 	 * task's rss, pagetable and swap space use.
 	 */
+	/* 获取其mm的rss + 其使用的swap空间 + 页表空间 */
 	points = get_mm_rss(p->mm) + get_mm_counter(p->mm, MM_SWAPENTS) +
 		mm_pgtables_bytes(p->mm) / PAGE_SIZE;
 	task_unlock(p);
 
 	/* Normalize to oom_score_adj units */
+	/* 分数调整值 */
 	adj *= totalpages / 1000;
 	points += adj;
 
@@ -307,11 +312,13 @@ static enum oom_constraint constrained_alloc(struct oom_control *oc)
 	return CONSTRAINT_NONE;
 }
 
+/* 计算该进程的oom分数 */
 static int oom_evaluate_task(struct task_struct *task, void *arg)
 {
 	struct oom_control *oc = arg;
 	long points;
 
+	/* 若该线程不能被oom kill，直接返回 */
 	if (oom_unkillable_task(task))
 		goto next;
 
@@ -363,6 +370,7 @@ abort:
  * Simple selection loop. We choose the process with the highest number of
  * 'points'. In case scan was aborted, oc->chosen is set to -1.
  */
+/* 选择需要kuill的进程 */
 static void select_bad_process(struct oom_control *oc)
 {
 	oc->chosen_points = LONG_MIN;
@@ -373,6 +381,7 @@ static void select_bad_process(struct oom_control *oc)
 		struct task_struct *p;
 
 		rcu_read_lock();
+		/* 遍历所有进程，并计算其oom的分数 */
 		for_each_process(p)
 			if (oom_evaluate_task(p, oc))
 				break;
@@ -856,6 +865,7 @@ static bool task_will_free_mem(struct task_struct *task)
 	return ret;
 }
 
+/* 杀死进程 */
 static void __oom_kill_process(struct task_struct *victim, const char *message)
 {
 	struct task_struct *p;
@@ -927,6 +937,7 @@ static void __oom_kill_process(struct task_struct *victim, const char *message)
 		 */
 		if (unlikely(p->flags & PF_KTHREAD))
 			continue;
+		/* 向该进程发送sigkill信号 */
 		do_send_sig_info(SIGKILL, SEND_SIG_PRIV, p, PIDTYPE_TGID);
 	}
 	rcu_read_unlock();
@@ -953,6 +964,7 @@ static int oom_kill_memcg_member(struct task_struct *task, void *message)
 	return 0;
 }
 
+/* 杀死oom选择的进程 */
 static void oom_kill_process(struct oom_control *oc, const char *message)
 {
 	struct task_struct *victim = oc->chosen;
@@ -985,6 +997,7 @@ static void oom_kill_process(struct oom_control *oc, const char *message)
 	 */
 	oom_group = mem_cgroup_get_oom_group(victim, oc->memcg);
 
+	/* 杀死进程 */
 	__oom_kill_process(victim, message);
 
 	/*
@@ -1045,10 +1058,12 @@ EXPORT_SYMBOL_GPL(unregister_oom_notifier);
  * OR try to be smart about which process to kill. Note that we
  * don't have to be perfect here, we just have to be good.
  */
+/* 在内存不足时，oom函数将会选择并杀死一个进程 */
 bool out_of_memory(struct oom_control *oc)
 {
 	unsigned long freed = 0;
 
+	/* oom killer未使能 */
 	if (oom_killer_disabled)
 		return false;
 
@@ -1089,6 +1104,7 @@ bool out_of_memory(struct oom_control *oc)
 		oc->nodemask = NULL;
 	check_panic_on_oom(oc);
 
+	/* memcg的情形，杀死当前进程 */
 	if (!is_memcg_oom(oc) && sysctl_oom_kill_allocating_task &&
 	    current->mm && !oom_unkillable_task(current) &&
 	    oom_cpuset_eligible(current, oc) &&
@@ -1099,6 +1115,7 @@ bool out_of_memory(struct oom_control *oc)
 		return true;
 	}
 
+	/* 选择需要kuill的进程 */
 	select_bad_process(oc);
 	/* Found nothing?!?! */
 	if (!oc->chosen) {
@@ -1109,9 +1126,11 @@ bool out_of_memory(struct oom_control *oc)
 		 * system level, we cannot survive this and will enter
 		 * an endless loop in the allocator. Bail out now.
 		 */
+		/* 系统挂死 */
 		if (!is_sysrq_oom(oc) && !is_memcg_oom(oc))
 			panic("System is deadlocked on memory\n");
 	}
+	/* 选择成功，杀死选择的进程 */
 	if (oc->chosen && oc->chosen != (void *)-1UL)
 		oom_kill_process(oc, !is_memcg_oom(oc) ? "Out of memory" :
 				 "Memory cgroup out of memory");

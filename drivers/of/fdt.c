@@ -1215,11 +1215,14 @@ bool __init early_init_dt_scan(void *params)
 {
 	bool status;
 
+	pr_info("%s aaaa\n", __func__);
 	status = early_init_dt_verify(params);
 	if (!status)
 		return false;
 
+	pr_info("%s bbbb\n", __func__);
 	early_init_dt_scan_nodes();
+	pr_info("%s cccc\n", __func__);
 	return true;
 }
 

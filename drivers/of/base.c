@@ -1365,7 +1365,7 @@ int of_phandle_iterator_init(struct of_phandle_iterator *it,
 	if (cell_count < 0 && !cells_name)
 		return -EINVAL;
 
-	/* 获取list name指定的属性 */
+	/* 获取list name指定的属性，以及该属性的size */
 	list = of_get_property(np, list_name, &size);
 	if (!list)
 		return -ENOENT;
@@ -1381,6 +1381,7 @@ int of_phandle_iterator_init(struct of_phandle_iterator *it,
 }
 EXPORT_SYMBOL_GPL(of_phandle_iterator_init);
 
+/* phandle迭代操作 */
 int of_phandle_iterator_next(struct of_phandle_iterator *it)
 {
 	uint32_t count = 0;
@@ -1861,6 +1862,11 @@ EXPORT_SYMBOL(of_parse_phandle_with_fixed_args);
  * determined by the #gpio-cells property in the node pointed to by the
  * phandle.
  */
+/* 在一个属性中查找phandle引用的数量
+   np：指向一个包含list的设备树节点
+   list_name：包含list的属性名
+   cells_name：指定phandles参数数量的属性名
+*/
 int of_count_phandle_with_args(const struct device_node *np, const char *list_name,
 				const char *cells_name)
 {
@@ -1873,10 +1879,15 @@ int of_count_phandle_with_args(const struct device_node *np, const char *list_na
 	 * phandle and no arguments are to consider. So we don't iterate through
 	 * the list but just use the length to determine the phandle count.
 	 */
+	/* cells_name为空，假定cell值为0。因此在列表中以32bit的word遍历phandles，
+       并且假定其不带参数。因此不需要遍历参数，而直接根据其长度计算phandle的
+       数量
+	*/
 	if (!cells_name) {
 		const __be32 *list;
 		int size;
 
+		/* 获取该属性的size，并根据该size直接计算 */
 		list = of_get_property(np, list_name, &size);
 		if (!list)
 			return -ENOENT;
@@ -1884,10 +1895,12 @@ int of_count_phandle_with_args(const struct device_node *np, const char *list_na
 		return size / sizeof(*list);
 	}
 
+	/* 初始化phandle迭代流程 */
 	rc = of_phandle_iterator_init(&it, np, list_name, cells_name, -1);
 	if (rc)
 		return rc;
 
+	/* 执行phandle迭代流程 */
 	while ((rc = of_phandle_iterator_next(&it)) == 0)
 		cur_index += 1;
 

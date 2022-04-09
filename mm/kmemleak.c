@@ -104,12 +104,18 @@
 /*
  * Kmemleak configuration and common defines.
  */
+/* 栈跟踪长度 */
 #define MAX_TRACE		16	/* stack trace length */
+/* 最小对象报告周期，5秒 */
 #define MSECS_MIN_AGE		5000	/* minimum object age for reporting */
+/* 第一次扫描之前的延迟，60秒 */
 #define SECS_FIRST_SCAN		60	/* delay before the first scan */
+/* 自动扫描延迟，600秒 */
 #define SECS_SCAN_WAIT		600	/* subsequent auto scanning delay */
+/* 扫描块的最大长度 */
 #define MAX_SCAN_SIZE		4096	/* maximum size of a scanned block */
 
+/* 指针长度 */
 #define BYTES_PER_POINTER	sizeof(void *)
 
 /* GFP bitmask for kmemleak internal allocations */
@@ -118,6 +124,7 @@
 				 __GFP_NOWARN)
 
 /* scanning area inside a memory block */
+/* 一个内存块中的扫描区域 */
 struct kmemleak_scan_area {
 	struct hlist_node node;
 	unsigned long start;
@@ -135,15 +142,25 @@ struct kmemleak_scan_area {
  * the notes on locking above). These objects are reference-counted
  * (use_count) and freed using the RCU mechanism.
  */
+/* kmemleak对象
+   该结构体保存每个被分配内存块的metadata。
+   该对象使用引用计数来维护其使用计数，并使用rcu机制释放
+*/
 struct kmemleak_object {
 	raw_spinlock_t lock;
 	unsigned int flags;		/* object status flags */
+	/* 对象链表节点 */
 	struct list_head object_list;
+	/* 灰色链表节点 */
 	struct list_head gray_list;
+	/* 红黑树节点 */
 	struct rb_node rb_node;
+	/* 用于保护object_list的操作 */
 	struct rcu_head rcu;		/* object_list lockless traversal */
 	/* object usage count; object freed when use_count == 0 */
+	/* 引用计数 */
 	atomic_t use_count;
+	/* 指针 */
 	unsigned long pointer;
 	size_t size;
 	/* pass surplus references to this pointer */
@@ -219,6 +236,7 @@ static struct task_struct *scan_thread;
 static unsigned long jiffies_min_age;
 static unsigned long jiffies_last_scan;
 /* delay between automatic memory scannings */
+/* 自动扫描的周期 */
 static unsigned long jiffies_scan_wait;
 /* enables or disables the task stacks scanning */
 static int kmemleak_stack_scan = 1;
@@ -304,12 +322,14 @@ static void hex_dump_object(struct seq_file *seq,
  * Newly created objects don't have any color assigned (object->count == -1)
  * before the next memory scan when they become white.
  */
+/* 判断该对象的颜色是否为白色 */
 static bool color_white(const struct kmemleak_object *object)
 {
 	return object->count != KMEMLEAK_BLACK &&
 		object->count < object->min_count;
 }
 
+/* 判断该对象的颜色是否为灰色 */
 static bool color_gray(const struct kmemleak_object *object)
 {
 	return object->min_count != KMEMLEAK_BLACK &&
@@ -321,6 +341,7 @@ static bool color_gray(const struct kmemleak_object *object)
  * not be deleted and have a minimum age to avoid false positives caused by
  * pointers temporarily stored in CPU registers.
  */
+/* 判断一个对象是否为无引用对象 */
 static bool unreferenced_object(struct kmemleak_object *object)
 {
 	return (color_white(object) && object->flags & OBJECT_ALLOCATED) &&
@@ -332,12 +353,16 @@ static bool unreferenced_object(struct kmemleak_object *object)
  * Printing of the unreferenced objects information to the seq file. The
  * print_unreferenced function must be called with the object->lock held.
  */
+/* 向seq file打印无引用的对象信息 */
 static void print_unreferenced(struct seq_file *seq,
 			       struct kmemleak_object *object)
 {
 	int i;
 	unsigned int msecs_age = jiffies_to_msecs(jiffies - object->jiffies);
 
+	/* 打印指针 - size - 进程名 - 进程id - 对象的jiffies - 对象存在时间
+       调用栈信息等
+	*/
 	warn_or_seq_printf(seq, "unreferenced object 0x%08lx (size %zu):\n",
 		   object->pointer, object->size);
 	warn_or_seq_printf(seq, "  comm \"%s\", pid %d, jiffies %lu (age %d.%03ds)\n",
@@ -357,6 +382,10 @@ static void print_unreferenced(struct seq_file *seq,
  * debugging special cases when kmemleak operations. It must be called with
  * the object->lock held.
  */
+/* dump该对象的信息,其信息包含：
+   指针 - 长度 - 进程名 - 进程号 - 时间
+   颜色- 引用计数 - 标志 - checksum - 调用栈 
+*/
 static void dump_object_info(struct kmemleak_object *object)
 {
 	pr_notice("Object 0x%08lx (size %zu):\n",
@@ -377,10 +406,12 @@ static void dump_object_info(struct kmemleak_object *object)
  * beginning of the memory block are allowed. The kmemleak_lock must be held
  * when calling this function.
  */
+/* 根据指针查找kmemleak对象 */
 static struct kmemleak_object *lookup_object(unsigned long ptr, int alias)
 {
 	struct rb_node *rb = object_tree_root.rb_node;
 
+	/* 遍历红黑树，并查找匹配的对象 */
 	while (rb) {
 		struct kmemleak_object *object =
 			rb_entry(rb, struct kmemleak_object, rb_node);
@@ -406,6 +437,7 @@ static struct kmemleak_object *lookup_object(unsigned long ptr, int alias)
  * registered and the object should no longer be used. This function must be
  * called under the protection of rcu_read_lock().
  */
+/* 增加该对象的引用计数 */
 static int get_object(struct kmemleak_object *object)
 {
 	return atomic_inc_not_zero(&object->use_count);
@@ -414,12 +446,14 @@ static int get_object(struct kmemleak_object *object)
 /*
  * Memory pool allocation and freeing. kmemleak_lock must not be held.
  */
+/* 从mempool中分配kmemleak对象 */
 static struct kmemleak_object *mem_pool_alloc(gfp_t gfp)
 {
 	unsigned long flags;
 	struct kmemleak_object *object;
 
 	/* try the slab allocator first */
+	/* 从slab中分配对象 */
 	if (object_cache) {
 		object = kmem_cache_alloc(object_cache, gfp_kmemleak_mask(gfp));
 		if (object)
@@ -427,6 +461,7 @@ static struct kmemleak_object *mem_pool_alloc(gfp_t gfp)
 	}
 
 	/* slab allocation failed, try the memory pool */
+	/* 分配失败，从mempool的空闲链表中分配一个对象的内存 */
 	raw_spin_lock_irqsave(&kmemleak_lock, flags);
 	object = list_first_entry_or_null(&mem_pool_free_list,
 					  typeof(*object), object_list);
@@ -444,16 +479,19 @@ static struct kmemleak_object *mem_pool_alloc(gfp_t gfp)
 /*
  * Return the object to either the slab allocator or the memory pool.
  */
+ /* 将对象内存释放到slab或mempool中 */
 static void mem_pool_free(struct kmemleak_object *object)
 {
 	unsigned long flags;
 
+	/* 若不是从mempool中分配，则通过slab方式释放 */
 	if (object < mem_pool || object >= mem_pool + ARRAY_SIZE(mem_pool)) {
 		kmem_cache_free(object_cache, object);
 		return;
 	}
 
 	/* add the object to the memory pool free list */
+	/* 若该object是从mempool中分配的，则将其归还给mem_pool_free_list中 */
 	raw_spin_lock_irqsave(&kmemleak_lock, flags);
 	list_add(&object->object_list, &mem_pool_free_list);
 	raw_spin_unlock_irqrestore(&kmemleak_lock, flags);
@@ -462,10 +500,12 @@ static void mem_pool_free(struct kmemleak_object *object)
 /*
  * RCU callback to free a kmemleak_object.
  */
+/* 释放kmemleak_object对象的回调 */
 static void free_object_rcu(struct rcu_head *rcu)
 {
 	struct hlist_node *tmp;
 	struct kmemleak_scan_area *area;
+	/* 获取该rcu对应的对象 */
 	struct kmemleak_object *object =
 		container_of(rcu, struct kmemleak_object, rcu);
 
@@ -473,10 +513,14 @@ static void free_object_rcu(struct rcu_head *rcu)
 	 * Once use_count is 0 (guaranteed by put_object), there is no other
 	 * code accessing this object, hence no need for locking.
 	 */
+	/* 遍历该对象对应的area */
 	hlist_for_each_entry_safe(area, tmp, &object->area_list, node) {
+		/* 释放链表中该area的节点 */
 		hlist_del(&area->node);
+		/* 将该area释放到slab中 */
 		kmem_cache_free(scan_area_cache, area);
 	}
+	/* 将对象内存释放到mempool中 */
 	mem_pool_free(object);
 }
 
@@ -487,8 +531,10 @@ static void free_object_rcu(struct rcu_head *rcu)
  * recursive call to the kernel allocator. Lock-less RCU object_list traversal
  * is also possible.
  */
+/* 减少object的引用计数，若其计数值等于0，则释放object */
 static void put_object(struct kmemleak_object *object)
 {
+	/* 判断引用计数是否为0 */
 	if (!atomic_dec_and_test(&object->use_count))
 		return;
 
@@ -500,6 +546,7 @@ static void put_object(struct kmemleak_object *object)
 	 * concurrent object_list traversal when !object_cache and all objects
 	 * came from the memory pool. Free the object directly.
 	 */
+	/* 释放对象 */
 	if (object_cache)
 		call_rcu(&object->rcu, free_object_rcu);
 	else
@@ -509,6 +556,7 @@ static void put_object(struct kmemleak_object *object)
 /*
  * Look up an object in the object search tree and increase its use_count.
  */
+/* 查询该对象，并增加其引用计数 */
 static struct kmemleak_object *find_and_get_object(unsigned long ptr, int alias)
 {
 	unsigned long flags;
@@ -531,6 +579,7 @@ static struct kmemleak_object *find_and_get_object(unsigned long ptr, int alias)
  * Remove an object from the object_tree_root and object_list. Must be called
  * with the kmemleak_lock held _if_ kmemleak is still enabled.
  */
+/* 从红黑树以及链表中删除该对象的节点 */
 static void __remove_object(struct kmemleak_object *object)
 {
 	rb_erase(&object->rb_node, &object_tree_root);
@@ -542,12 +591,14 @@ static void __remove_object(struct kmemleak_object *object)
  * object_tree_root and object_list. The returned object's use_count should be
  * at least 1, as initially set by create_object().
  */
+/* 查找该指针对应的对象，并将其从链表和红黑树中删除 */
 static struct kmemleak_object *find_and_remove_object(unsigned long ptr, int alias)
 {
 	unsigned long flags;
 	struct kmemleak_object *object;
 
 	raw_spin_lock_irqsave(&kmemleak_lock, flags);
+	/* 根据指针查找对象 */
 	object = lookup_object(ptr, alias);
 	if (object)
 		__remove_object(object);
@@ -559,6 +610,7 @@ static struct kmemleak_object *find_and_remove_object(unsigned long ptr, int ali
 /*
  * Save stack trace to the given array of MAX_TRACE size.
  */
+/* 保存当前进程的调用栈 */
 static int __save_stack_trace(unsigned long *trace)
 {
 	return stack_trace_save(trace, MAX_TRACE, 2);
@@ -568,6 +620,7 @@ static int __save_stack_trace(unsigned long *trace)
  * Create the metadata (struct kmemleak_object) corresponding to an allocated
  * memory block and add it to the object_list and object_tree_root.
  */
+/* 创建一个与已分配内存模块相关的metadata，并且将其添加到object_list链表和红黑树中 */
 static struct kmemleak_object *create_object(unsigned long ptr, size_t size,
 					     int min_count, gfp_t gfp)
 {
@@ -576,6 +629,7 @@ static struct kmemleak_object *create_object(unsigned long ptr, size_t size,
 	struct rb_node **link, *rb_parent;
 	unsigned long untagged_ptr;
 
+	/* 分配一个object对象 */
 	object = mem_pool_alloc(gfp);
 	if (!object) {
 		pr_warn("Cannot allocate a kmemleak_object structure\n");
@@ -583,28 +637,36 @@ static struct kmemleak_object *create_object(unsigned long ptr, size_t size,
 		return NULL;
 	}
 
+	/* 初始化对象对应的链表 */
 	INIT_LIST_HEAD(&object->object_list);
 	INIT_LIST_HEAD(&object->gray_list);
 	INIT_HLIST_HEAD(&object->area_list);
 	raw_spin_lock_init(&object->lock);
+	/* 设置使用计数 */
 	atomic_set(&object->use_count, 1);
 	object->flags = OBJECT_ALLOCATED;
+	/* 该对象对应指针的值和长度 */
 	object->pointer = ptr;
 	object->size = kfence_ksize((void *)ptr) ?: size;
 	object->excess_ref = 0;
+	/* 最小计数，-1为黑色，0为灰色 */
 	object->min_count = min_count;
+	/* 初始化为白色 */
 	object->count = 0;			/* white color initially */
 	object->jiffies = jiffies;
 	object->checksum = 0;
 
 	/* task information */
 	if (in_irq()) {
+		/* 中断上下文 */
 		object->pid = 0;
 		strncpy(object->comm, "hardirq", sizeof(object->comm));
 	} else if (in_serving_softirq()) {
+		/* 软中断上下文 */
 		object->pid = 0;
 		strncpy(object->comm, "softirq", sizeof(object->comm));
 	} else {
+		/* 保存其pid和进程名 */
 		object->pid = current->pid;
 		/*
 		 * There is a small chance of a race with set_task_comm(),
@@ -616,15 +678,20 @@ static struct kmemleak_object *create_object(unsigned long ptr, size_t size,
 	}
 
 	/* kernel backtrace */
+	/* 保存当前进程的调用栈 */
 	object->trace_len = __save_stack_trace(object->trace);
 
 	raw_spin_lock_irqsave(&kmemleak_lock, flags);
 
+	/* reset kasan的tag，保存其实际的指针。
+       aarch64中，其高8位为tag
+	*/
 	untagged_ptr = (unsigned long)kasan_reset_tag((void *)ptr);
 	min_addr = min(min_addr, untagged_ptr);
 	max_addr = max(max_addr, untagged_ptr + size);
 	link = &object_tree_root.rb_node;
 	rb_parent = NULL;
+	/* 将其插入到红黑树中 */
 	while (*link) {
 		rb_parent = *link;
 		parent = rb_entry(rb_parent, struct kmemleak_object, rb_node);
@@ -648,6 +715,7 @@ static struct kmemleak_object *create_object(unsigned long ptr, size_t size,
 	rb_link_node(&object->rb_node, rb_parent, link);
 	rb_insert_color(&object->rb_node, &object_tree_root);
 
+	/* 将其插入到链表中 */
 	list_add_tail_rcu(&object->object_list, &object_list);
 out:
 	raw_spin_unlock_irqrestore(&kmemleak_lock, flags);
@@ -657,6 +725,7 @@ out:
 /*
  * Mark the object as not allocated and schedule RCU freeing via put_object().
  */
+/* 删除该节点 */
 static void __delete_object(struct kmemleak_object *object)
 {
 	unsigned long flags;
@@ -678,6 +747,7 @@ static void __delete_object(struct kmemleak_object *object)
  * Look up the metadata (struct kmemleak_object) corresponding to ptr and
  * delete it.
  */
+/* 查找与给定指针相关的metadata，并删除之 */
 static void delete_object_full(unsigned long ptr)
 {
 	struct kmemleak_object *object;
@@ -698,6 +768,9 @@ static void delete_object_full(unsigned long ptr)
  * delete it. If the memory block is partially freed, the function may create
  * additional metadata for the remaining parts of the block.
  */
+/* 查找给定指针对应的对象，并删除它。
+   若给定size比实际对象小，则将其拆分，创建新的对象并删除size指定的部分
+*/
 static void delete_object_part(unsigned long ptr, size_t size)
 {
 	struct kmemleak_object *object;
@@ -729,13 +802,19 @@ static void delete_object_part(unsigned long ptr, size_t size)
 	__delete_object(object);
 }
 
+/* 设置该对象的颜色 */
 static void __paint_it(struct kmemleak_object *object, int color)
 {
+	/* 颜色实际为对象的min_count,
+       其中颜色gray为0，black为-1，对于颜色为black，则设置其
+       OBJECT_NO_SCAN标志。
+	*/
 	object->min_count = color;
 	if (color == KMEMLEAK_BLACK)
 		object->flags |= OBJECT_NO_SCAN;
 }
 
+/* 设置该对象的颜色 */
 static void paint_it(struct kmemleak_object *object, int color)
 {
 	unsigned long flags;
@@ -745,10 +824,12 @@ static void paint_it(struct kmemleak_object *object, int color)
 	raw_spin_unlock_irqrestore(&object->lock, flags);
 }
 
+/* 设置该指针的颜色 */
 static void paint_ptr(unsigned long ptr, int color)
 {
 	struct kmemleak_object *object;
 
+	/* 获取该指针对应的对象 */
 	object = find_and_get_object(ptr, 0);
 	if (!object) {
 		kmemleak_warn("Trying to color unknown object at 0x%08lx as %s\n",
@@ -757,6 +838,7 @@ static void paint_ptr(unsigned long ptr, int color)
 			      (color == KMEMLEAK_BLACK) ? "Black" : "Unknown");
 		return;
 	}
+	/* 设置该对象的颜色 */
 	paint_it(object, color);
 	put_object(object);
 }
@@ -765,6 +847,7 @@ static void paint_ptr(unsigned long ptr, int color)
  * Mark an object permanently as gray-colored so that it can no longer be
  * reported as a leak. This is used in general to mark a false positive.
  */
+/* 将一个对象永久地标记为灰色，从而使其不会被报告为泄露。 */
 static void make_gray_object(unsigned long ptr)
 {
 	paint_ptr(ptr, KMEMLEAK_GREY);
@@ -774,6 +857,7 @@ static void make_gray_object(unsigned long ptr)
  * Mark the object as black-colored so that it is ignored from scans and
  * reporting.
  */
+/* 将该地址设置为black，因此该地址不会被扫描，也不会被报告为内存泄露 */
 static void make_black_object(unsigned long ptr)
 {
 	paint_ptr(ptr, KMEMLEAK_BLACK);
@@ -783,12 +867,16 @@ static void make_black_object(unsigned long ptr)
  * Add a scanning area to the object. If at least one such area is added,
  * kmemleak will only scan these ranges rather than the whole memory block.
  */
+/* 为一个对象添加scan area。若添加了至少一个area，则kmemleak将只扫描这些
+   area的range，而不是整个内存block
+*/
 static void add_scan_area(unsigned long ptr, size_t size, gfp_t gfp)
 {
 	unsigned long flags;
 	struct kmemleak_object *object;
 	struct kmemleak_scan_area *area = NULL;
 
+	/* 查找该地址对应的对象 */
 	object = find_and_get_object(ptr, 1);
 	if (!object) {
 		kmemleak_warn("Adding scan area to unknown object at 0x%08lx\n",
@@ -796,11 +884,13 @@ static void add_scan_area(unsigned long ptr, size_t size, gfp_t gfp)
 		return;
 	}
 
+	/* 从slab中分配一个area对象 */
 	if (scan_area_cache)
 		area = kmem_cache_alloc(scan_area_cache, gfp_kmemleak_mask(gfp));
 
 	raw_spin_lock_irqsave(&object->lock, flags);
 	if (!area) {
+		/* 分配失败，则扫描整个object */
 		pr_warn_once("Cannot allocate a scan area, scanning the full object\n");
 		/* mark the object for full scan to avoid false positives */
 		object->flags |= OBJECT_FULL_SCAN;
@@ -815,6 +905,7 @@ static void add_scan_area(unsigned long ptr, size_t size, gfp_t gfp)
 		goto out_unlock;
 	}
 
+	/* 填充参数，并将其添加到链表中 */
 	INIT_HLIST_NODE(&area->node);
 	area->start = ptr;
 	area->size = size;
@@ -831,6 +922,9 @@ out_unlock:
  * vm_struct may be used as an alternative reference to the vmalloc'ed object
  * (see free_thread_stack()).
  */
+/* 设置其excess_ref成员
+   ptr任何多余的引用计数（object设置为了gray），都会被设置到excess_ref中。
+*/
 static void object_set_excess_ref(unsigned long ptr, unsigned long excess_ref)
 {
 	unsigned long flags;
@@ -854,17 +948,20 @@ static void object_set_excess_ref(unsigned long ptr, unsigned long excess_ref)
  * pointer. Such object will not be scanned by kmemleak but references to it
  * are searched.
  */
+/* 为指针对应的对象设置OBJECT_NO_SCAN标志 */
 static void object_no_scan(unsigned long ptr)
 {
 	unsigned long flags;
 	struct kmemleak_object *object;
 
+	/* 查找该指针对应的kmemleak对象 */
 	object = find_and_get_object(ptr, 0);
 	if (!object) {
 		kmemleak_warn("Not scanning unknown object at 0x%08lx\n", ptr);
 		return;
 	}
 
+	/* 设置其no scan标志 */
 	raw_spin_lock_irqsave(&object->lock, flags);
 	object->flags |= OBJECT_NO_SCAN;
 	raw_spin_unlock_irqrestore(&object->lock, flags);
@@ -885,11 +982,13 @@ static void object_no_scan(unsigned long ptr)
  * This function is called from the kernel allocators when a new object
  * (memory block) is allocated (kmem_cache_alloc, kmalloc etc.).
  */
+/* 注册一个新分配的对象，该函数在内核分配器分配一个新对象时被调用 */
 void __ref kmemleak_alloc(const void *ptr, size_t size, int min_count,
 			  gfp_t gfp)
 {
 	pr_debug("%s(0x%p, %zu, %d)\n", __func__, ptr, size, min_count);
 
+	/* 创建一个kmemleak对象 */
 	if (kmemleak_enabled && ptr && !IS_ERR(ptr))
 		create_object((unsigned long)ptr, size, min_count, gfp);
 }
@@ -904,6 +1003,9 @@ EXPORT_SYMBOL_GPL(kmemleak_alloc);
  * This function is called from the kernel percpu allocator when a new object
  * (memory block) is allocated (alloc_percpu).
  */
+/* 注册一个新分配的percpu对象
+   该函数在内核的percpu对象被分配时调用
+*/
 void __ref kmemleak_alloc_percpu(const void __percpu *ptr, size_t size,
 				 gfp_t gfp)
 {
@@ -915,6 +1017,7 @@ void __ref kmemleak_alloc_percpu(const void __percpu *ptr, size_t size,
 	 * Percpu allocations are only scanned and not reported as leaks
 	 * (min_count is set to 0).
 	 */
+	/* 该函数为每个possible cpu分配一个kmemleak对象 */
 	if (kmemleak_enabled && ptr && !IS_ERR(ptr))
 		for_each_possible_cpu(cpu)
 			create_object((unsigned long)per_cpu_ptr(ptr, cpu),
@@ -931,6 +1034,7 @@ EXPORT_SYMBOL_GPL(kmemleak_alloc_percpu);
  * This function is called from the vmalloc() kernel allocator when a new
  * object (memory block) is allocated.
  */
+/* 该函数在vmalloc内核分配器分配一个新的对象时被调用 */
 void __ref kmemleak_vmalloc(const struct vm_struct *area, size_t size, gfp_t gfp)
 {
 	pr_debug("%s(0x%p, %zu)\n", __func__, area, size);
@@ -939,6 +1043,7 @@ void __ref kmemleak_vmalloc(const struct vm_struct *area, size_t size, gfp_t gfp
 	 * A min_count = 2 is needed because vm_struct contains a reference to
 	 * the virtual address of the vmalloc'ed block.
 	 */
+	/* min_count设置为2 */
 	if (kmemleak_enabled) {
 		create_object((unsigned long)area->addr, size, 2, gfp);
 		object_set_excess_ref((unsigned long)area,
@@ -954,10 +1059,15 @@ EXPORT_SYMBOL_GPL(kmemleak_vmalloc);
  * This function is called from the kernel allocators when an object (memory
  * block) is freed (kmem_cache_free, kfree, vfree etc.).
  */
+/* 注销一个先前注册的对象
+   在一个内存块被内核分配器释放时（如kmem_cache_free，kfree，vfree等），
+   该函数将被调用
+*/
 void __ref kmemleak_free(const void *ptr)
 {
 	pr_debug("%s(0x%p)\n", __func__, ptr);
 
+	/* 查找与给定指针相关的metadata，并删除之 */
 	if (kmemleak_free_enabled && ptr && !IS_ERR(ptr))
 		delete_object_full((unsigned long)ptr);
 }
@@ -972,6 +1082,7 @@ EXPORT_SYMBOL_GPL(kmemleak_free);
  * This function is called when only a part of a memory block is freed
  * (usually from the bootmem allocator).
  */
+/* 释放部分对象 */
 void __ref kmemleak_free_part(const void *ptr, size_t size)
 {
 	pr_debug("%s(0x%p)\n", __func__, ptr);
@@ -988,6 +1099,7 @@ EXPORT_SYMBOL_GPL(kmemleak_free_part);
  * This function is called from the kernel percpu allocator when an object
  * (memory block) is freed (free_percpu).
  */
+/* 释放percpu对象 */
 void __ref kmemleak_free_percpu(const void __percpu *ptr)
 {
 	unsigned int cpu;
@@ -1008,6 +1120,7 @@ EXPORT_SYMBOL_GPL(kmemleak_free_percpu);
  * Override the object allocation stack trace for cases where the actual
  * allocation place is not always useful.
  */
+/* 更新kmemleak的调用栈 */
 void __ref kmemleak_update_trace(const void *ptr)
 {
 	struct kmemleak_object *object;
@@ -1018,6 +1131,7 @@ void __ref kmemleak_update_trace(const void *ptr)
 	if (!kmemleak_enabled || IS_ERR_OR_NULL(ptr))
 		return;
 
+	/* 获取该指针对应的对象 */
 	object = find_and_get_object((unsigned long)ptr, 1);
 	if (!object) {
 #ifdef DEBUG
@@ -1027,6 +1141,7 @@ void __ref kmemleak_update_trace(const void *ptr)
 		return;
 	}
 
+	/* 设置其调用栈 */
 	raw_spin_lock_irqsave(&object->lock, flags);
 	object->trace_len = __save_stack_trace(object->trace);
 	raw_spin_unlock_irqrestore(&object->lock, flags);
@@ -1042,10 +1157,14 @@ EXPORT_SYMBOL(kmemleak_update_trace);
  * Calling this function on an object will cause the memory block to no longer
  * be reported as leak and always be scanned.
  */
+/* 将一个已分配的对象标记为false positive
+   对对象调用此函数，将导致内存块不再被报告为泄漏，并始终被扫描
+*/
 void __ref kmemleak_not_leak(const void *ptr)
 {
 	pr_debug("%s(0x%p)\n", __func__, ptr);
 
+	/* 将其颜色设置为灰色 */
 	if (kmemleak_enabled && ptr && !IS_ERR(ptr))
 		make_gray_object((unsigned long)ptr);
 }
@@ -1060,10 +1179,15 @@ EXPORT_SYMBOL(kmemleak_not_leak);
  * it is known that the corresponding block is not a leak and does not contain
  * any references to other allocated memory blocks.
  */
+/* 忽略一个已分配的对象
+   在一个对象上调用该函数，将导致其对应的内存块被忽略（不会被扫描也不会被报告
+   为leak）。
+*/
 void __ref kmemleak_ignore(const void *ptr)
 {
 	pr_debug("%s(0x%p)\n", __func__, ptr);
 
+	/* 将其颜色设置为黑色 */
 	if (kmemleak_enabled && ptr && !IS_ERR(ptr))
 		make_black_object((unsigned long)ptr);
 }
@@ -1080,6 +1204,7 @@ EXPORT_SYMBOL(kmemleak_ignore);
  * contain references to other objects. Kmemleak will only scan these areas
  * reducing the number false negatives.
  */
+/* 添加该对象的扫描区域，添加后kmemleak将只会扫描scan area中的空间。 */
 void __ref kmemleak_scan_area(const void *ptr, size_t size, gfp_t gfp)
 {
 	pr_debug("%s(0x%p)\n", __func__, ptr);
@@ -1098,6 +1223,7 @@ EXPORT_SYMBOL(kmemleak_scan_area);
  * references to other objects. Kmemleak will not scan such objects reducing
  * the number of false negatives.
  */
+/* 不扫描特定的对象 */
 void __ref kmemleak_no_scan(const void *ptr)
 {
 	pr_debug("%s(0x%p)\n", __func__, ptr);
@@ -1116,6 +1242,7 @@ EXPORT_SYMBOL(kmemleak_no_scan);
  *              See kmemleak_alloc()
  * @gfp:	kmalloc() flags used for kmemleak internal memory allocations
  */
+/* 通过物理地址创建kmemleak对象 */
 void __ref kmemleak_alloc_phys(phys_addr_t phys, size_t size, int min_count,
 			       gfp_t gfp)
 {
@@ -1165,6 +1292,7 @@ EXPORT_SYMBOL(kmemleak_ignore_phys);
 /*
  * Update an object's checksum and return true if it was modified.
  */
+/* 更新该对象对应内存中数据的checksum */
 static bool update_checksum(struct kmemleak_object *object)
 {
 	u32 old_csum = object->checksum;
@@ -1181,6 +1309,7 @@ static bool update_checksum(struct kmemleak_object *object)
 /*
  * Update an object's references. object->lock must be held by the caller.
  */
+/* 更新引用计数 */
 static void update_refs(struct kmemleak_object *object)
 {
 	if (!color_white(object)) {
@@ -1206,6 +1335,10 @@ static void update_refs(struct kmemleak_object *object)
  * Memory scanning is a long process and it needs to be interruptible. This
  * function checks whether such interrupt condition occurred.
  */
+/* 是否需要停止扫描
+   由于内存扫描需要较长的时间，因此应该要支持可中断。该函数用于
+   检查是否需要中断
+*/
 static int scan_should_stop(void)
 {
 	if (!kmemleak_enabled)
@@ -1215,6 +1348,7 @@ static int scan_should_stop(void)
 	 * This function may be called from either process or kthread context,
 	 * hence the need to check for both stop conditions.
 	 */
+	/* 该函数可能被任意进程或kthread上下文调用 */
 	if (current->mm)
 		return signal_pending(current);
 	else
@@ -1227,6 +1361,7 @@ static int scan_should_stop(void)
  * Scan a memory block (exclusive range) for valid pointers and add those
  * found to the gray list.
  */
+/* 扫描一个内存块 */
 static void scan_block(void *_start, void *_end,
 		       struct kmemleak_object *scanned)
 {
@@ -1301,14 +1436,17 @@ static void scan_block(void *_start, void *_end,
  * Scan a large memory block in MAX_SCAN_SIZE chunks to reduce the latency.
  */
 #ifdef CONFIG_SMP
+/* 扫描large block */
 static void scan_large_block(void *start, void *end)
 {
 	void *next;
 
+	/* 逐块扫描，每次扫描4k */
 	while (start < end) {
 		next = min(start + MAX_SCAN_SIZE, end);
 		scan_block(start, next, NULL);
 		start = next;
+		/* 扫描一个块就让出cpu */
 		cond_resched();
 	}
 }
@@ -1318,6 +1456,7 @@ static void scan_large_block(void *start, void *end)
  * Scan a memory block corresponding to a kmemleak_object. A condition is
  * that object->use_count >= 1.
  */
+/* 扫描对象 */
 static void scan_object(struct kmemleak_object *object)
 {
 	struct kmemleak_scan_area *area;
@@ -1364,6 +1503,7 @@ out:
  * Scan the objects already referenced (gray objects). More objects will be
  * referenced and, if there are no memory leaks, all the objects are scanned.
  */
+/* 扫描灰色链表 */
 static void scan_gray_list(void)
 {
 	struct kmemleak_object *object, *tmp;
@@ -1398,6 +1538,7 @@ static void scan_gray_list(void)
  * kernel's standard allocators. This function must be called with the
  * scan_mutex held.
  */
+/* 扫描数据段以及所有通过内核标准分配器分配的referenced内存块 */
 static void kmemleak_scan(void)
 {
 	unsigned long flags;
@@ -1409,6 +1550,7 @@ static void kmemleak_scan(void)
 
 	/* prepare the kmemleak_object's */
 	rcu_read_lock();
+	/* 扫描所有的对象 */
 	list_for_each_entry_rcu(object, &object_list, object_list) {
 		raw_spin_lock_irqsave(&object->lock, flags);
 #ifdef DEBUG
@@ -1423,6 +1565,7 @@ static void kmemleak_scan(void)
 		}
 #endif
 		/* reset the reference count (whiten the object) */
+		/* 将gray对象添加到gray链表中 */
 		object->count = 0;
 		if (color_gray(object) && get_object(object))
 			list_add_tail(&object->gray_list, &gray_list);
@@ -1433,6 +1576,7 @@ static void kmemleak_scan(void)
 
 #ifdef CONFIG_SMP
 	/* per-cpu sections scanning */
+	/* 扫描所有cpu的percpu数据 */
 	for_each_possible_cpu(i)
 		scan_large_block(__per_cpu_start + per_cpu_offset(i),
 				 __per_cpu_end + per_cpu_offset(i));
@@ -1442,11 +1586,13 @@ static void kmemleak_scan(void)
 	 * Struct page scanning for each node.
 	 */
 	get_online_mems();
+	/* 遍历所有online的节点 */
 	for_each_online_node(i) {
 		unsigned long start_pfn = node_start_pfn(i);
 		unsigned long end_pfn = node_end_pfn(i);
 		unsigned long pfn;
 
+		/* 扫描所有的page */
 		for (pfn = start_pfn; pfn < end_pfn; pfn++) {
 			struct page *page = pfn_to_online_page(pfn);
 
@@ -1473,6 +1619,7 @@ static void kmemleak_scan(void)
 		struct task_struct *p, *g;
 
 		rcu_read_lock();
+		/* 遍历所有的线程，并扫描其栈 */
 		for_each_process_thread(g, p) {
 			void *stack = try_get_task_stack(p);
 			if (stack) {
@@ -1520,6 +1667,7 @@ static void kmemleak_scan(void)
 	/*
 	 * Scanning result reporting.
 	 */
+	/* 报告扫描结果 */
 	rcu_read_lock();
 	list_for_each_entry_rcu(object, &object_list, object_list) {
 		raw_spin_lock_irqsave(&object->lock, flags);
@@ -1569,6 +1717,9 @@ static int kmemleak_scan_thread(void *arg)
 			timeout = schedule_timeout_interruptible(timeout);
 	}
 
+	/* 若该线程没有被停止，则周期性地执行扫描操作。
+       该扫描至多为10分钟一次
+	*/
 	while (!kthread_should_stop()) {
 		signed long timeout = READ_ONCE(jiffies_scan_wait);
 
@@ -1605,9 +1756,11 @@ static void start_scan_thread(void)
 /*
  * Stop the automatic memory scanning thread.
  */
+/* 停止扫描线程 */
 static void stop_scan_thread(void)
 {
 	if (scan_thread) {
+		/* 停止该线程对应的kthread */
 		kthread_stop(scan_thread);
 		scan_thread = NULL;
 	}
@@ -1853,6 +2006,7 @@ static const struct file_operations kmemleak_fops = {
 	.release	= seq_release,
 };
 
+/* kmemleak的清除操作 */
 static void __kmemleak_do_cleanup(void)
 {
 	struct kmemleak_object *object, *tmp;
@@ -1862,7 +2016,9 @@ static void __kmemleak_do_cleanup(void)
 	 * or kmemleak_lock held.
 	 */
 	list_for_each_entry_safe(object, tmp, &object_list, object_list) {
+		/* 从红黑树以及链表中删除该对象的节点 */
 		__remove_object(object);
+		/* 删除该节点 */
 		__delete_object(object);
 	}
 }
@@ -1872,6 +2028,7 @@ static void __kmemleak_do_cleanup(void)
  * no previous scan thread (otherwise, kmemleak may still have some useful
  * information on memory leaks).
  */
+/* 停止内存扫描线程，并且释放kmemleak内部对象 */
 static void kmemleak_do_cleanup(struct work_struct *work)
 {
 	stop_scan_thread();
@@ -1898,6 +2055,9 @@ static DECLARE_WORK(cleanup_work, kmemleak_do_cleanup);
  * Disable kmemleak. No memory allocation/freeing will be traced once this
  * function is called. Disabling kmemleak is an irreversible operation.
  */
+/* 关闭kmemleak，一旦调用此函数，将不会跟踪内存分配/释放。禁用kmemleak
+   是一项不可逆的操作 
+*/
 static void kmemleak_disable(void)
 {
 	/* atomically check whether it was already invoked */
@@ -1905,9 +2065,11 @@ static void kmemleak_disable(void)
 		return;
 
 	/* stop any memory operation tracing */
+	/* 清除kmemleak使能标志 */
 	kmemleak_enabled = 0;
 
 	/* check whether it is too early for a kernel thread */
+	/* 若kmemleak已经被初始化，则调用cleanup work清除先前的信息 */
 	if (kmemleak_initialized)
 		schedule_work(&cleanup_work);
 	else
@@ -1919,6 +2081,7 @@ static void kmemleak_disable(void)
 /*
  * Allow boot-time kmemleak disabling (enabled by default).
  */
+/* 启动时可以配置kmemleak的开关 */
 static int __init kmemleak_boot_config(char *str)
 {
 	if (!str)
@@ -1936,10 +2099,12 @@ early_param("kmemleak", kmemleak_boot_config);
 /*
  * Kmemleak initialization.
  */
+/* kmemleak初始化函数 */
 void __init kmemleak_init(void)
 {
 #ifdef CONFIG_DEBUG_KMEMLEAK_DEFAULT_OFF
 	if (!kmemleak_skip_disable) {
+		/* 关闭kmemleak */
 		kmemleak_disable();
 		return;
 	}
@@ -1955,6 +2120,7 @@ void __init kmemleak_init(void)
 	scan_area_cache = KMEM_CACHE(kmemleak_scan_area, SLAB_NOLEAKTRACE);
 
 	/* register the data/bss sections */
+	/* 将数据段和bss段区域设置为灰色 */
 	create_object((unsigned long)_sdata, _edata - _sdata,
 		      KMEMLEAK_GREY, GFP_ATOMIC);
 	create_object((unsigned long)__bss_start, __bss_stop - __bss_start,
@@ -1973,6 +2139,7 @@ static int __init kmemleak_late_init(void)
 {
 	kmemleak_initialized = 1;
 
+	/* 创建kmemleak的debugfs */
 	debugfs_create_file("kmemleak", 0644, NULL, NULL, &kmemleak_fops);
 
 	if (kmemleak_error) {

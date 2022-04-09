@@ -163,6 +163,7 @@ EXPORT_SYMBOL(zalloc_cpumask_var);
  * Either returns an allocated (zero-filled) cpumask, or causes the
  * system to panic.
  */
+/* 从bootmem区域分配一个cpumask结构体 */
 void __init alloc_bootmem_cpumask_var(cpumask_var_t *mask)
 {
 	*mask = memblock_alloc(cpumask_size(), SMP_CACHE_BYTES);
@@ -177,6 +178,7 @@ void __init alloc_bootmem_cpumask_var(cpumask_var_t *mask)
  *
  * This is safe on a NULL mask.
  */
+/* 释放cpumask结构体 */
 void free_cpumask_var(cpumask_var_t mask)
 {
 	kfree(mask);

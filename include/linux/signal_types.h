@@ -9,6 +9,7 @@
 #include <linux/list.h>
 #include <uapi/linux/signal.h>
 
+/* 内核信号信息 */
 typedef struct kernel_siginfo {
 	__SIGINFO;
 } kernel_siginfo_t;
@@ -18,7 +19,7 @@ struct ucounts;
 /*
  * Real Time signals may be queued.
  */
-
+/* 信号队列 */
 struct sigqueue {
 	struct list_head list;
 	int flags;
@@ -48,6 +49,7 @@ struct sigaction {
 	sigset_t	sa_mask;	/* mask last for extensibility */
 };
 
+/* 信号处理函数 */
 struct k_sigaction {
 	struct sigaction sa;
 #ifdef __ARCH_HAS_KA_RESTORER
@@ -64,6 +66,7 @@ struct old_sigaction {
 };
 #endif
 
+/* 内核信号 */
 struct ksignal {
 	struct k_sigaction ka;
 	kernel_siginfo_t info;

@@ -535,6 +535,7 @@ static bool need_new_vmid_gen(struct kvm_vmid *vmid)
  * update_vmid - Update the vmid with a valid VMID for the current generation
  * @vmid: The stage-2 VMID information struct
  */
+/* 更新vmid */
 static void update_vmid(struct kvm_vmid *vmid)
 {
 	if (!need_new_vmid_gen(vmid))
@@ -581,26 +582,32 @@ static void update_vmid(struct kvm_vmid *vmid)
 	spin_unlock(&kvm_vmid_lock);
 }
 
+/* vcpu第一次启动时的初始化流程 */
 static int kvm_vcpu_first_run_init(struct kvm_vcpu *vcpu)
 {
 	struct kvm *kvm = vcpu->kvm;
 	int ret = 0;
 
+	/* 判断是否为vcpu的第一次执行 */
 	if (likely(vcpu->arch.has_run_once))
 		return 0;
 
+	/* vcpu是否已完成初始化 */
 	if (!kvm_arm_vcpu_is_finalized(vcpu))
 		return -EPERM;
 
 	vcpu->arch.has_run_once = true;
 
+	/* 设置vcpu debug功能的trap */
 	kvm_arm_vcpu_init_debug(vcpu);
 
+	/* 是否支持vgic */
 	if (likely(irqchip_in_kernel(kvm))) {
 		/*
 		 * Map the VGIC hardware resources before running a vcpu the
 		 * first time on this VM.
 		 */
+		/* 在vcpu第一次执行之前，映射VGIC的硬件资源 */
 		ret = kvm_vgic_map_resources(kvm);
 		if (ret)
 			return ret;
@@ -612,10 +619,12 @@ static int kvm_vcpu_first_run_init(struct kvm_vcpu *vcpu)
 		static_branch_inc(&userspace_irqchip_in_use);
 	}
 
+	/* vcpu的timer初始化 */
 	ret = kvm_timer_enable(vcpu);
 	if (ret)
 		return ret;
 
+	/* vcpu的pmu初始化 */
 	ret = kvm_arm_pmu_v3_enable(vcpu);
 
 	return ret;
@@ -668,11 +677,13 @@ static void vcpu_req_sleep(struct kvm_vcpu *vcpu)
 	smp_rmb();
 }
 
+/* vcpu是否已初始化 */
 static int kvm_vcpu_initialized(struct kvm_vcpu *vcpu)
 {
 	return vcpu->arch.target >= 0;
 }
 
+/* 检查vcpu请求 */
 static void check_vcpu_requests(struct kvm_vcpu *vcpu)
 {
 	if (kvm_request_pending(vcpu)) {
@@ -724,24 +735,33 @@ static bool vcpu_mode_is_bad_32bit(struct kvm_vcpu *vcpu)
  * return with return value 0 and with the kvm_run structure filled in with the
  * required data for the requested emulation.
  */
+/* vcpu执行guest代码的主运行函数
+   该函数通过用户空间的VCPU_RUN ioctl调用，它将在一个循环中执行VM代码，直到进程
+   的时间片到期，或者需要用户空间的模拟操作，此时该函数将返回0，且将请求模拟所需
+   的数据填充到kvm_run结构体中
+*/
 int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 {
 	struct kvm_run *run = vcpu->run;
 	int ret;
 
+	/* vcpu是否已初始化 */
 	if (unlikely(!kvm_vcpu_initialized(vcpu)))
 		return -ENOEXEC;
 
+	/* vcpu第一次启动时的初始化流程 */
 	ret = kvm_vcpu_first_run_init(vcpu);
 	if (ret)
 		return ret;
 
+	/* mmio退出原因的处理 */
 	if (run->exit_reason == KVM_EXIT_MMIO) {
 		ret = kvm_handle_mmio_return(vcpu);
 		if (ret)
 			return ret;
 	}
 
+	/* vcpu的负载计算 */
 	vcpu_load(vcpu);
 
 	if (run->immediate_exit) {
@@ -749,16 +769,20 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 		goto out;
 	}
 
+	/* 信号处理 */
 	kvm_sigset_activate(vcpu);
 
 	ret = 1;
 	run->exit_reason = KVM_EXIT_UNKNOWN;
+	/* 进入循环 */
 	while (ret > 0) {
 		/*
 		 * Check conditions before entering the guest
 		 */
+		/* 进入guest之前检查是否需要进程切换 */
 		cond_resched();
 
+		/* 更新vmid */
 		update_vmid(&vcpu->arch.hw_mmu->vmid);
 
 		check_vcpu_requests(vcpu);
@@ -774,12 +798,14 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 
 		local_irq_disable();
 
+		/* 刷新vgic的硬件状态 */
 		kvm_vgic_flush_hwstate(vcpu);
 
 		/*
 		 * Exit if we have a signal pending so that we can deliver the
 		 * signal to user space.
 		 */
+		/* 当前进程是否含有pending的信号 */
 		if (signal_pending(current)) {
 			ret = -EINTR;
 			run->exit_reason = KVM_EXIT_INTR;
@@ -1384,12 +1410,14 @@ long kvm_arch_vm_ioctl(struct file *filp,
 	}
 }
 
+/* 获取nvhe的percpu地址size */
 static unsigned long nvhe_percpu_size(void)
 {
 	return (unsigned long)CHOOSE_NVHE_SYM(__per_cpu_end) -
 		(unsigned long)CHOOSE_NVHE_SYM(__per_cpu_start);
 }
 
+/* 获取nvhe的percpu地址order */
 static unsigned long nvhe_percpu_order(void)
 {
 	unsigned long size = nvhe_percpu_size();
@@ -1405,6 +1433,7 @@ static void kvm_init_vector_slot(void *base, enum arm64_hyp_spectre_vector slot)
 	hyp_spectre_vector_selector[slot] = __kvm_vector_slot2addr(base, slot);
 }
 
+/* 初始化hyper的vector slots */
 static int kvm_init_vector_slots(void)
 {
 	int err;
@@ -1552,6 +1581,7 @@ static void cpu_set_hyp_vector(void)
 		kvm_call_hyp_nvhe(__pkvm_cpu_set_vector, data->slot);
 }
 
+/* cpu hyper重新初始化 */
 static void cpu_hyp_reinit(void)
 {
 	kvm_init_host_cpu_context(&this_cpu_ptr_hyp_sym(kvm_host_data)->host_ctxt);
@@ -1571,6 +1601,7 @@ static void cpu_hyp_reinit(void)
 		kvm_vgic_init_cpu_hardware();
 }
 
+/* kvm使能硬件 */
 static void _kvm_arch_hardware_enable(void *discard)
 {
 	if (!__this_cpu_read(kvm_arm_hardware_enabled)) {
@@ -1701,6 +1732,7 @@ static int init_common_resources(void)
 	return kvm_set_ipa_limit();
 }
 
+/* 初始化subsystem */
 static int init_subsystems(void)
 {
 	int err = 0;
@@ -1708,6 +1740,9 @@ static int init_subsystems(void)
 	/*
 	 * Enable hardware so that subsystem initialisation can access EL2.
 	 */
+	/* 通过ipi在每个cpu上调用_kvm_arch_hardware_enable函数，
+       使能硬件，以subsystem初始化可以访问EL2
+	*/
 	on_each_cpu(_kvm_arch_hardware_enable, NULL, 1);
 
 	/*
@@ -1799,6 +1834,7 @@ static int kvm_hyp_init_protection(u32 hyp_va_bits)
 /**
  * Inits Hyp-mode on all online CPUs
  */
+/* 初始化hyper模式 */
 static int init_hyp_mode(void)
 {
 	u32 hyp_va_bits;
@@ -1809,12 +1845,14 @@ static int init_hyp_mode(void)
 	 * The protected Hyp-mode cannot be initialized if the memory pool
 	 * allocation has failed.
 	 */
+	/* 是否使能了protected kvm */
 	if (is_protected_kvm_enabled() && !hyp_mem_base)
 		goto out_err;
 
 	/*
 	 * Allocate Hyp PGD and setup Hyp identity mapping
 	 */
+	/* 分配hyp pgd和设置hyp identity mapping */
 	err = kvm_mmu_init(&hyp_va_bits);
 	if (err)
 		goto out_err;
@@ -1822,6 +1860,10 @@ static int init_hyp_mode(void)
 	/*
 	 * Allocate stack pages for Hypervisor-mode
 	 */
+	/* 为hypervisor模式分配栈的page
+       遍历所有possible cpu，并为其分配一个页的内存，
+       作为hypervisor的栈内存
+	*/
 	for_each_possible_cpu(cpu) {
 		unsigned long stack_page;
 
@@ -1837,16 +1879,21 @@ static int init_hyp_mode(void)
 	/*
 	 * Allocate and initialize pages for Hypervisor-mode percpu regions.
 	 */
+	/* 为每个possible cpu分配percpu内存，并将percpu的数据拷贝到
+	   每个cpu对应的内存中 
+	*/
 	for_each_possible_cpu(cpu) {
 		struct page *page;
 		void *page_addr;
 
+		/* 获取percpu内存的size，并为其分配地址空间 */
 		page = alloc_pages(GFP_KERNEL, nvhe_percpu_order());
 		if (!page) {
 			err = -ENOMEM;
 			goto out_err;
 		}
 
+		/* 拷贝percpu数据，并将其起始地址设置为该cpu的percpu基地址 */
 		page_addr = page_address(page);
 		memcpy(page_addr, CHOOSE_NVHE_SYM(__per_cpu_start), nvhe_percpu_size());
 		kvm_arm_hyp_percpu_base[cpu] = (unsigned long)page_addr;
@@ -1855,6 +1902,7 @@ static int init_hyp_mode(void)
 	/*
 	 * Map the Hyp-code called directly from the host
 	 */
+	/* 映射hypervisor代码段的内存 */
 	err = create_hyp_mappings(kvm_ksym_ref(__hyp_text_start),
 				  kvm_ksym_ref(__hyp_text_end), PAGE_HYP_EXEC);
 	if (err) {
@@ -1862,6 +1910,7 @@ static int init_hyp_mode(void)
 		goto out_err;
 	}
 
+	/* 映射hypervisor的只读数据段内存 */
 	err = create_hyp_mappings(kvm_ksym_ref(__hyp_rodata_start),
 				  kvm_ksym_ref(__hyp_rodata_end), PAGE_HYP_RO);
 	if (err) {
@@ -1869,6 +1918,7 @@ static int init_hyp_mode(void)
 		goto out_err;
 	}
 
+	/* 映射只读数据段内存 */
 	err = create_hyp_mappings(kvm_ksym_ref(__start_rodata),
 				  kvm_ksym_ref(__end_rodata), PAGE_HYP_RO);
 	if (err) {
@@ -1881,6 +1931,7 @@ static int init_hyp_mode(void)
 	 * section thanks to an assertion in the linker script. Map it RW and
 	 * the rest of .bss RO.
 	 */
+	/* 映射hypervisor的bss段内存 */
 	err = create_hyp_mappings(kvm_ksym_ref(__hyp_bss_start),
 				  kvm_ksym_ref(__hyp_bss_end), PAGE_HYP);
 	if (err) {
@@ -1888,6 +1939,7 @@ static int init_hyp_mode(void)
 		goto out_err;
 	}
 
+	/* 映射bss段内存 */
 	err = create_hyp_mappings(kvm_ksym_ref(__hyp_bss_end),
 				  kvm_ksym_ref(__bss_stop), PAGE_HYP_RO);
 	if (err) {
@@ -1898,6 +1950,7 @@ static int init_hyp_mode(void)
 	/*
 	 * Map the Hyp stack pages
 	 */
+	/* 为每个cpu映射hypervisor的栈段内存 */
 	for_each_possible_cpu(cpu) {
 		char *stack_page = (char *)per_cpu(kvm_arm_hyp_stack_page, cpu);
 		err = create_hyp_mappings(stack_page, stack_page + PAGE_SIZE,
@@ -1909,6 +1962,7 @@ static int init_hyp_mode(void)
 		}
 	}
 
+	/* 为每个cpu映射hypervisor的percpu段内存 */
 	for_each_possible_cpu(cpu) {
 		char *percpu_begin = (char *)kvm_arm_hyp_percpu_base[cpu];
 		char *percpu_end = percpu_begin + nvhe_percpu_size();
@@ -2015,6 +2069,7 @@ static int finalize_hyp_mode(void)
 	return 0;
 }
 
+/* 根据产商和part number，获取其target cpu的型号 */
 static void check_kvm_target_cpu(void *ret)
 {
 	*(int *)ret = kvm_target_cpu();
@@ -2076,17 +2131,20 @@ void kvm_arch_irq_bypass_start(struct irq_bypass_consumer *cons)
 /**
  * Initialize Hyp-mode and memory mappings on all CPUs.
  */
+/* arm64架构下的kvm初始化 */
 int kvm_arch_init(void *opaque)
 {
 	int err;
 	int ret, cpu;
 	bool in_hyp_mode;
 
+	/* 判断hyp模式是否可用 */
 	if (!is_hyp_mode_available()) {
 		kvm_info("HYP mode not available\n");
 		return -ENODEV;
 	}
 
+	/* 判断kernel是否处于hyp模式 */
 	in_hyp_mode = is_kernel_in_hyp_mode();
 
 	if (cpus_have_final_cap(ARM64_WORKAROUND_DEVICE_LOAD_ACQUIRE) ||
@@ -2094,6 +2152,9 @@ int kvm_arch_init(void *opaque)
 		kvm_info("Guests without required CPU erratum workarounds can deadlock system!\n" \
 			 "Only trusted guests should be used on this system.\n");
 
+	/* 遍历所有的online cpu，并通过ipi调用check_kvm_target_cpu接口，
+       以获取target cpu的型号，以判断该型号的cpu是否被支持
+	*/
 	for_each_online_cpu(cpu) {
 		smp_call_function_single(cpu, check_kvm_target_cpu, &ret, 1);
 		if (ret < 0) {
@@ -2102,20 +2163,26 @@ int kvm_arch_init(void *opaque)
 		}
 	}
 
+	/* page size校验，以及stage 2地址limit值设置 */
 	err = init_common_resources();
 	if (err)
 		return err;
 
+	/* kvm初始化sve */
 	err = kvm_arm_init_sve();
 	if (err)
 		return err;
 
+	/* 若当前kernel不处于hyper模式，则初始化hyper模式，它会创建
+	   并映射hyper页表映 
+	*/
 	if (!in_hyp_mode) {
 		err = init_hyp_mode();
 		if (err)
 			goto out_err;
 	}
 
+	/* 初始化hyper的vector slots */
 	err = kvm_init_vector_slots();
 	if (err) {
 		kvm_err("Cannot initialise vector slots\n");
@@ -2180,6 +2247,7 @@ enum kvm_mode kvm_get_mode(void)
 	return kvm_mode;
 }
 
+/* arm的kvm初始化 */
 static int arm_init(void)
 {
 	int rc = kvm_init(NULL, sizeof(struct kvm_vcpu), 0, THIS_MODULE);

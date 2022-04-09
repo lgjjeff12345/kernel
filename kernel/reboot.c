@@ -67,7 +67,6 @@ EXPORT_SYMBOL_GPL(pm_power_off_prepare);
 /* 紧急重启
    重启系统时不关闭任何硬件或持有任何锁。在我们认为系统出问题，
    且最好的解决方案是启动时调用。它可以在中断上下文调用
-
 */
 void emergency_restart(void)
 {

@@ -20,6 +20,7 @@
  * @nr_entries:	Number of entries in the storage array
  * @spaces:	Number of leading spaces to print
  */
+/* 打印调用栈 */
 void stack_trace_print(const unsigned long *entries, unsigned int nr_entries,
 		       int spaces)
 {
@@ -28,6 +29,7 @@ void stack_trace_print(const unsigned long *entries, unsigned int nr_entries,
 	if (WARN_ON(!entries))
 		return;
 
+	/* 打印调用栈的各个entry */
 	for (i = 0; i < nr_entries; i++)
 		printk("%*c%pS\n", 1 + spaces, ' ', (void *)entries[i]);
 }
@@ -108,6 +110,7 @@ static bool stack_trace_consume_entry_nosched(void *cookie, unsigned long addr)
  *
  * Return: Number of trace entries stored.
  */
+/* 将一个stack trace信息保存到一个storage数组中 */
 unsigned int stack_trace_save(unsigned long *store, unsigned int size,
 			      unsigned int skipnr)
 {

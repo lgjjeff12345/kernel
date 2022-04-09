@@ -34,6 +34,7 @@ u8 debug_monitors_arch(void)
 /*
  * MDSCR access routines.
  */
+/* 写mdscr寄存器 */
 static void mdscr_write(u32 mdscr)
 {
 	unsigned long flags;
@@ -43,6 +44,7 @@ static void mdscr_write(u32 mdscr)
 }
 NOKPROBE_SYMBOL(mdscr_write);
 
+/* 读mdscr寄存器 */
 static u32 mdscr_read(void)
 {
 	return read_sysreg(mdscr_el1);
@@ -55,6 +57,7 @@ NOKPROBE_SYMBOL(mdscr_read);
  */
 static bool debug_enabled = true;
 
+/* 软件debugfs的入口 */
 static int create_debug_debugfs_entry(void)
 {
 	debugfs_create_bool("debug_enabled", 0644, NULL, &debug_enabled);
@@ -62,6 +65,7 @@ static int create_debug_debugfs_entry(void)
 }
 fs_initcall(create_debug_debugfs_entry);
 
+/* 关闭debug使能 */
 static int __init early_debug_disable(char *buf)
 {
 	debug_enabled = false;
@@ -77,12 +81,14 @@ early_param("nodebugmon", early_debug_disable);
 static DEFINE_PER_CPU(int, mde_ref_count);
 static DEFINE_PER_CPU(int, kde_ref_count);
 
+/* 使能debug monitor */
 void enable_debug_monitors(enum dbg_active_el el)
 {
 	u32 mdscr, enable = 0;
 
 	WARN_ON(preemptible());
 
+	/* 使能mdscr寄存器的mde和kde bit */
 	if (this_cpu_inc_return(mde_ref_count) == 1)
 		enable = DBG_MDSCR_MDE;
 
@@ -98,12 +104,14 @@ void enable_debug_monitors(enum dbg_active_el el)
 }
 NOKPROBE_SYMBOL(enable_debug_monitors);
 
+/* 关闭debug monitor */
 void disable_debug_monitors(enum dbg_active_el el)
 {
 	u32 mdscr, disable = 0;
 
 	WARN_ON(preemptible());
 
+	/* 清除mdscr的mde和kde bit */
 	if (this_cpu_dec_return(mde_ref_count) == 0)
 		disable = ~DBG_MDSCR_MDE;
 
@@ -130,6 +138,9 @@ static int clear_os_lock(unsigned int cpu)
 	return 0;
 }
 
+/* 初始化debug    monitor
+   即注册cpu hp时的回调，该回调用于清除osdlr_el1和oslar_el1寄存器
+*/
 static int __init debug_monitors_init(void)
 {
 	return cpuhp_setup_state(CPUHP_AP_ARM64_DEBUG_MONITORS_STARTING,
@@ -141,12 +152,14 @@ postcore_initcall(debug_monitors_init);
 /*
  * Single step API and exception handling.
  */
+/* aarch64架构下，在pstate中设置DBG_SPSR_SS bit，用于启动单步调试 */
 static void set_user_regs_spsr_ss(struct user_pt_regs *regs)
 {
 	regs->pstate |= DBG_SPSR_SS;
 }
 NOKPROBE_SYMBOL(set_user_regs_spsr_ss);
 
+/* aarch64架构下，在pstate中清除DBG_SPSR_SS bit，用于停止单步调试 */
 static void clear_user_regs_spsr_ss(struct user_pt_regs *regs)
 {
 	regs->pstate &= ~DBG_SPSR_SS;
@@ -160,6 +173,7 @@ static DEFINE_SPINLOCK(debug_hook_lock);
 static LIST_HEAD(user_step_hook);
 static LIST_HEAD(kernel_step_hook);
 
+/* 注册debug钩子函数，其中list为链表头，node为待注册的节点 */
 static void register_debug_hook(struct list_head *node, struct list_head *list)
 {
 	spin_lock(&debug_hook_lock);
@@ -168,6 +182,7 @@ static void register_debug_hook(struct list_head *node, struct list_head *list)
 
 }
 
+/* 注销钩子函数 */
 static void unregister_debug_hook(struct list_head *node)
 {
 	spin_lock(&debug_hook_lock);
@@ -176,21 +191,25 @@ static void unregister_debug_hook(struct list_head *node)
 	synchronize_rcu();
 }
 
+/* 注册用户单步钩子函数 */
 void register_user_step_hook(struct step_hook *hook)
 {
 	register_debug_hook(&hook->node, &user_step_hook);
 }
 
+/* 注销用户单步钩子函数 */
 void unregister_user_step_hook(struct step_hook *hook)
 {
 	unregister_debug_hook(&hook->node);
 }
 
+/* 注册内核单步钩子函数 */
 void register_kernel_step_hook(struct step_hook *hook)
 {
 	register_debug_hook(&hook->node, &kernel_step_hook);
 }
 
+/* 注销内核单步钩子函数 */
 void unregister_kernel_step_hook(struct step_hook *hook)
 {
 	unregister_debug_hook(&hook->node);
@@ -202,12 +221,14 @@ void unregister_kernel_step_hook(struct step_hook *hook)
  * So we call all the registered handlers, until the right handler is
  * found which returns zero.
  */
+/* 调用已注册的单步钩子函数 */
 static int call_step_hook(struct pt_regs *regs, unsigned int esr)
 {
 	struct step_hook *hook;
 	struct list_head *list;
 	int retval = DBG_HOOK_ERROR;
 
+	/* 根据寄存器的mode，选择是调用用户钩子函数，还是内核钩子函数 */
 	list = user_mode(regs) ? &user_step_hook : &kernel_step_hook;
 
 	/*
@@ -224,6 +245,7 @@ static int call_step_hook(struct pt_regs *regs, unsigned int esr)
 }
 NOKPROBE_SYMBOL(call_step_hook);
 
+/* 向用户空间发送sigtrap信号 */
 static void send_user_sigtrap(int si_code)
 {
 	struct pt_regs *regs = current_pt_regs();
@@ -404,6 +426,7 @@ void user_fastforward_single_step(struct task_struct *task)
 		clear_regs_spsr_ss(task_pt_regs(task));
 }
 
+/* reset用户的单步寄存器 */
 void user_regs_reset_single_step(struct user_pt_regs *regs,
 				 struct task_struct *task)
 {
@@ -414,6 +437,7 @@ void user_regs_reset_single_step(struct user_pt_regs *regs,
 }
 
 /* Kernel API */
+/* 内核使能单步模式 */
 void kernel_enable_single_step(struct pt_regs *regs)
 {
 	WARN_ON(!irqs_disabled());
@@ -423,6 +447,7 @@ void kernel_enable_single_step(struct pt_regs *regs)
 }
 NOKPROBE_SYMBOL(kernel_enable_single_step);
 
+/* 内核关闭单步模式 */
 void kernel_disable_single_step(void)
 {
 	WARN_ON(!irqs_disabled());
@@ -431,6 +456,7 @@ void kernel_disable_single_step(void)
 }
 NOKPROBE_SYMBOL(kernel_disable_single_step);
 
+/* 内核是否使能单步模式 */
 int kernel_active_single_step(void)
 {
 	WARN_ON(!irqs_disabled());
@@ -449,6 +475,7 @@ void user_enable_single_step(struct task_struct *task)
 }
 NOKPROBE_SYMBOL(user_enable_single_step);
 
+/* 关闭线程的单步模式 */
 void user_disable_single_step(struct task_struct *task)
 {
 	clear_ti_thread_flag(task_thread_info(task), TIF_SINGLESTEP);

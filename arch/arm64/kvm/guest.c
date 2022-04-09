@@ -842,6 +842,7 @@ int __kvm_arm_vcpu_set_events(struct kvm_vcpu *vcpu,
 	return 0;
 }
 
+/* 根据产商和part number，获取其target cpu的型号 */
 int __attribute_const__ kvm_target_cpu(void)
 {
 	unsigned long implementor = read_cpuid_implementor();

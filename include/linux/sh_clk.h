@@ -12,6 +12,11 @@
 
 struct clk;
 
+/* 时钟地址映射信息
+   phys：物理地址
+   base：虚拟地址
+   len：长度
+*/
 struct clk_mapping {
 	phys_addr_t		phys;
 	void __iomem		*base;
@@ -35,6 +40,25 @@ struct sh_clk_ops {
 #define SH_CLK_DIV4_MSK		SH_CLK_DIV_MSK(4)
 #define SH_CLK_DIV6_MSK		SH_CLK_DIV_MSK(6)
 
+/* clk结构体
+   parent：父clk
+   parent_num：parent数量
+   src_shift
+   src_width：source clock在配置寄存器中的field
+   ops：sh clk操作函数
+   children、sibling：子clock、sibling clock链表
+   rate：时钟频率
+   enable_reg：使能寄存器
+   status_reg：状态寄存器
+   enable_bit：使能位
+   mapped_reg：已映射的寄存器
+   div_mask：分频mask
+   arch_flags：arch标志
+   priv：私有数据
+   mapping：地址映射信息
+   freq_table：频率表
+   nr_freqs：频率数量
+*/
 struct clk {
 	struct list_head	node;
 	struct clk		*parent;

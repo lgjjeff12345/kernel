@@ -8,6 +8,7 @@
 #include <linux/mm.h>
 #include <linux/cma.h>
 
+/* 显示内存 */
 void show_mem(unsigned int filter, nodemask_t *nodemask)
 {
 	pg_data_t *pgdat;
@@ -16,9 +17,10 @@ void show_mem(unsigned int filter, nodemask_t *nodemask)
 	printk("Mem-Info:\n");
 	show_free_areas(filter, nodemask);
 
+	/* 遍历所有的numa节点 */
 	for_each_online_pgdat(pgdat) {
 		int zoneid;
-
+		/* 遍历所有的zone */
 		for (zoneid = 0; zoneid < MAX_NR_ZONES; zoneid++) {
 			struct zone *zone = &pgdat->node_zones[zoneid];
 			if (!populated_zone(zone))

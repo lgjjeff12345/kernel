@@ -16,11 +16,13 @@
 /*
  * Types defining task->signal and task->sighand and APIs using them:
  */
-
+/* 信号处理函数 */
 struct sighand_struct {
 	spinlock_t		siglock;
 	refcount_t		count;
+	/* 等待队列头 */
 	wait_queue_head_t	signalfd_wqh;
+	/* 信号处理函数数组 */
 	struct k_sigaction	action[_NSIG];
 };
 
@@ -218,6 +220,7 @@ struct signal_struct {
 	 * oom
 	 */
 	bool oom_flag_origin;
+	/* oom分数调整系数 */
 	short oom_score_adj;		/* OOM kill score adjustment */
 	short oom_score_adj_min;	/* OOM kill score adjustment min value.
 					 * Only settable by CAP_SYS_RESOURCE. */

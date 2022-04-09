@@ -25,15 +25,22 @@
 
 static struct platform_driver syscon_driver;
 
+/* syscon链表 */
 static DEFINE_SPINLOCK(syscon_list_slock);
 static LIST_HEAD(syscon_list);
 
+/* syscon结构体
+   np：设备节点
+   regmap：该syscon对应的regmap
+   list：链表节点
+*/
 struct syscon {
 	struct device_node *np;
 	struct regmap *regmap;
 	struct list_head list;
 };
 
+/* 寄存器地址和值都为32bit */
 static const struct regmap_config syscon_regmap_config = {
 	.reg_bits = 32,
 	.val_bits = 32,
@@ -180,6 +187,7 @@ struct regmap *device_node_to_regmap(struct device_node *np)
 }
 EXPORT_SYMBOL_GPL(device_node_to_regmap);
 
+/* 根据syscon节点，获取相关的regmap指针 */
 struct regmap *syscon_node_to_regmap(struct device_node *np)
 {
 	if (!of_device_is_compatible(np, "syscon"))
@@ -273,6 +281,7 @@ struct regmap *syscon_regmap_lookup_by_phandle_optional(struct device_node *np,
 }
 EXPORT_SYMBOL_GPL(syscon_regmap_lookup_by_phandle_optional);
 
+/* syscon probe函数 */
 static int syscon_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -282,27 +291,33 @@ static int syscon_probe(struct platform_device *pdev)
 	struct resource *res;
 	void __iomem *base;
 
+	/* 分配一个syscon结构体 */
 	syscon = devm_kzalloc(dev, sizeof(*syscon), GFP_KERNEL);
 	if (!syscon)
 		return -ENOMEM;
 
+	/* 获取该设备的ioreseource资源 */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res)
 		return -ENOENT;
 
+	/* 映射地址 */
 	base = devm_ioremap(dev, res->start, resource_size(res));
 	if (!base)
 		return -ENOMEM;
 
+	/* 设置syscon_config的最大寄存器数量和名字 */
 	syscon_config.max_register = resource_size(res) - 4;
 	if (pdata)
 		syscon_config.name = pdata->label;
+	/* 初始化mmio类型的regmap */
 	syscon->regmap = devm_regmap_init_mmio(dev, base, &syscon_config);
 	if (IS_ERR(syscon->regmap)) {
 		dev_err(dev, "regmap init failed\n");
 		return PTR_ERR(syscon->regmap);
 	}
 
+	/* 设置设备的drvdata */
 	platform_set_drvdata(pdev, syscon);
 
 	dev_dbg(dev, "regmap %pR registered\n", res);
@@ -323,6 +338,7 @@ static struct platform_driver syscon_driver = {
 	.id_table	= syscon_ids,
 };
 
+/* syscon初始化 */
 static int __init syscon_init(void)
 {
 	return platform_driver_register(&syscon_driver);

@@ -723,6 +723,7 @@ static void print_lockdep_cache(struct lockdep_map *lock)
 	printk(KERN_CONT "%s", name);
 }
 
+/* 打印锁的信息 */
 static void print_lock(struct held_lock *hlock)
 {
 	/*
@@ -747,10 +748,12 @@ static void print_lock(struct held_lock *hlock)
 	printk(KERN_CONT ", at: %pS\n", (void *)hlock->acquire_ip);
 }
 
+/* lockdep打印进程持有的锁 */
 static void lockdep_print_held_locks(struct task_struct *p)
 {
 	int i, depth = READ_ONCE(p->lockdep_depth);
 
+	/* 锁的数量 */
 	if (!depth)
 		printk("no locks held by %s/%d.\n", p->comm, task_pid_nr(p));
 	else
@@ -760,8 +763,10 @@ static void lockdep_print_held_locks(struct task_struct *p)
 	 * It's not reliable to print a task's held locks if it's not sleeping
 	 * and it's not the current task.
 	 */
+	/* 进程当前不处于运行态或正在运行 */
 	if (p != current && task_is_running(p))
 		return;
+	/* 打印所有的锁 */
 	for (i = 0; i < depth; i++) {
 		printk(" #%d: ", i);
 		print_lock(p->held_locks + i);
@@ -6439,6 +6444,7 @@ void debug_check_no_locks_held(void)
 EXPORT_SYMBOL_GPL(debug_check_no_locks_held);
 
 #ifdef __KERNEL__
+/* 显示所有的锁 */
 void debug_show_all_locks(void)
 {
 	struct task_struct *g, *p;
@@ -6450,11 +6456,15 @@ void debug_show_all_locks(void)
 	pr_warn("\nShowing all locks held in the system:\n");
 
 	rcu_read_lock();
+	/* 遍历所有的进程和线程 */
 	for_each_process_thread(g, p) {
 		if (!p->lockdep_depth)
 			continue;
+		/* 打印进程持有的锁 */
 		lockdep_print_held_locks(p);
+		/* 重启nmi看门狗 */
 		touch_nmi_watchdog();
+		/* 重启所有的softlockup看门狗 */
 		touch_all_softlockup_watchdogs();
 	}
 	rcu_read_unlock();

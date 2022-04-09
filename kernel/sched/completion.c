@@ -317,6 +317,9 @@ EXPORT_SYMBOL(try_wait_for_completion);
  *
  *	Note, this will always return true if complete_all() was called on @X.
  */
+/* 检查是否有waiters等待在完成量上
+   若有waiters返回0，否则返回1
+*/
 bool completion_done(struct completion *x)
 {
 	unsigned long flags;

@@ -269,6 +269,7 @@ static inline void init_sigpending(struct sigpending *sig)
 extern void flush_sigqueue(struct sigpending *queue);
 
 /* Test if 'sig' is valid signal. Use this instead of testing _NSIG directly */
+/* 校验signo是否有效 */
 static inline int valid_signal(unsigned long sig)
 {
 	return sig <= _NSIG ? 1 : 0;
@@ -441,6 +442,7 @@ extern bool unhandled_signal(struct task_struct *tsk, int sig);
 	rt_sigmask(SIGPOLL)   |  rt_sigmask(SIGSYS)    | \
 	SIGEMT_MASK                                    )
 
+/* 只能被内核处理的信号，用户不能设置信号处理函数 */
 #define sig_kernel_only(sig)		siginmask(sig, SIG_KERNEL_ONLY_MASK)
 #define sig_kernel_coredump(sig)	siginmask(sig, SIG_KERNEL_COREDUMP_MASK)
 #define sig_kernel_ignore(sig)		siginmask(sig, SIG_KERNEL_IGNORE_MASK)

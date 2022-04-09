@@ -24,6 +24,9 @@
  * 0 means callbacks will be suppressed.
  * 1 means go ahead and do it.
  */
+/* 该函数强制一个ratelimit，在每个rs->interval时间间隔内，允许调用的
+   次数不超过rs->burst次
+*/
 int ___ratelimit(struct ratelimit_state *rs, const char *func)
 {
 	unsigned long flags;
@@ -41,10 +44,15 @@ int ___ratelimit(struct ratelimit_state *rs, const char *func)
 	if (!raw_spin_trylock_irqsave(&rs->lock, flags))
 		return 0;
 
+	/* 起始时间，若未指定则指定为当前时间 */
 	if (!rs->begin)
 		rs->begin = jiffies;
 
+	/* 若结束时间比当前时间还要早
+       即前一周期已结束，开始下一周期
+	*/
 	if (time_is_before_jiffies(rs->begin + rs->interval)) {
+		/* 若上一周期含有missed的情形，则重置该计数 */
 		if (rs->missed) {
 			if (!(rs->flags & RATELIMIT_MSG_ON_RELEASE)) {
 				printk_deferred(KERN_WARNING
@@ -53,13 +61,16 @@ int ___ratelimit(struct ratelimit_state *rs, const char *func)
 				rs->missed = 0;
 			}
 		}
+		/* 开始下一个周期 */
 		rs->begin   = jiffies;
 		rs->printed = 0;
 	}
 	if (rs->burst && rs->burst > rs->printed) {
+		/* 该周期的调用次数未超过设定的burst值，返回1 */
 		rs->printed++;
 		ret = 1;
 	} else {
+		/* 该周期的调用次数超过burst值，增加丢失次数，并返回0 */
 		rs->missed++;
 		ret = 0;
 	}

@@ -132,6 +132,7 @@ struct kvm_fpu {
  * change the userspace ABI.
  */
 #define KVM_ARM_MAX_DBG_REGS 16
+/* 架构相关的geust debug寄存器 */
 struct kvm_guest_debug_arch {
 	__u64 dbg_bcr[KVM_ARM_MAX_DBG_REGS];
 	__u64 dbg_bvr[KVM_ARM_MAX_DBG_REGS];
@@ -172,6 +173,7 @@ struct kvm_pmu_event_filter {
 };
 
 /* for KVM_GET/SET_VCPU_EVENTS */
+/* kvm的vcpu事件 */
 struct kvm_vcpu_events {
 	struct {
 		__u8 serror_pending;

@@ -841,18 +841,26 @@ static void handle_signal(struct ksignal *ksig, struct pt_regs *regs)
  * the kernel can handle, and then we build all the user-level signal handling
  * stack-frames in one go after that.
  */
+/* init是一个特殊的进程，它不会接受其不希望处理的信号，因此不能通过SIGKILL
+   信号杀死该进程。
+   我们将会经过两次信号：一次用于检查该信号可以被内核处理，此后我们建立所有
+   用户级信号处理stack-frames
+*/
 static void do_signal(struct pt_regs *regs)
 {
 	unsigned long continue_addr = 0, restart_addr = 0;
 	int retval = 0;
 	struct ksignal ksig;
+	/* 当前是否处于系统调用流程中 */
 	bool syscall = in_syscall(regs);
 
 	/*
 	 * If we were from a system call, check for system call restarting...
 	 */
+	/* 若我们来自于系统调用，检查系统调用是否重新启动 */
 	if (syscall) {
 		continue_addr = regs->pc;
+		/* restart地址为上一条指令 */
 		restart_addr = continue_addr - (compat_thumb_mode(regs) ? 2 : 4);
 		retval = regs->regs[0];
 
@@ -925,10 +933,12 @@ static bool cpu_affinity_invalid(struct pt_regs *regs)
 				 system_32bit_el0_cpumask());
 }
 
+/* 该函数在由用户空间触发的同步异常返回用户空间之前调用 */
 asmlinkage void do_notify_resume(struct pt_regs *regs,
 				 unsigned long thread_flags)
 {
 	do {
+		/* 若设置了重调度标志，则执行实际的调度操作 */
 		if (thread_flags & _TIF_NEED_RESCHED) {
 			/* Unmask Debug and SError for the next task */
 			local_daif_restore(DAIF_PROCCTX_NOIRQ);
@@ -937,15 +947,18 @@ asmlinkage void do_notify_resume(struct pt_regs *regs,
 		} else {
 			local_daif_restore(DAIF_PROCCTX);
 
+			/* 若设置了uprobe标志，则执行uprobe的resume流程 */
 			if (thread_flags & _TIF_UPROBE)
 				uprobe_notify_resume(regs);
 
+			/* 若设置了mte的async fault标志，则执行发送sigfault信号 */
 			if (thread_flags & _TIF_MTE_ASYNC_FAULT) {
 				clear_thread_flag(TIF_MTE_ASYNC_FAULT);
 				send_sig_fault(SIGSEGV, SEGV_MTEAERR,
 					       (void __user *)NULL, current);
 			}
 
+			/* 若设置了_TIF_SIGPENDING或_TIF_NOTIFY_SIGNAL，则处理信号 */
 			if (thread_flags & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL))
 				do_signal(regs);
 

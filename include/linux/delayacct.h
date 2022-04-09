@@ -18,6 +18,7 @@
 #define DELAYACCT_PF_BLKIO	0x00000002	/* I am waiting on IO */
 
 #ifdef CONFIG_TASK_DELAY_ACCT
+/* 任务的delay信息 */
 struct task_delay_info {
 	raw_spinlock_t	lock;
 	unsigned int	flags;	/* Private per-task flags */
@@ -100,6 +101,7 @@ static inline void delayacct_clear_flag(struct task_struct *p, int flag)
 		p->delays->flags &= ~flag;
 }
 
+/* 设置线程的delayacct */
 static inline void delayacct_tsk_init(struct task_struct *tsk)
 {
 	/* reinitialize in case parent's non-null pointer was dup'ed*/

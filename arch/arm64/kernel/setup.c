@@ -184,9 +184,11 @@ static void __init setup_machine_fdt(phys_addr_t dt_phys)
 	void *dt_virt = fixmap_remap_fdt(dt_phys, &size, PAGE_KERNEL);
 	const char *name;
 
+	pr_info("%s 1111\n", __func__);
 	if (dt_virt)
 		memblock_reserve(dt_phys, size);
 
+	pr_info("%s 2222\n", __func__);
 	if (!dt_virt || !early_init_dt_scan(dt_virt)) {
 		pr_crit("\n"
 			"Error: invalid device tree blob at physical address %pa (virtual address 0x%p)\n"
@@ -198,6 +200,7 @@ static void __init setup_machine_fdt(phys_addr_t dt_phys)
 			cpu_relax();
 	}
 
+	pr_info("%s 3333\n", __func__);
 	/* Early fixups are done, map the FDT as read-only now */
 	fixmap_remap_fdt(dt_phys, &size, PAGE_KERNEL_RO);
 

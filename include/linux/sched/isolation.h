@@ -5,6 +5,7 @@
 #include <linux/init.h>
 #include <linux/tick.h>
 
+/* housekeeping标志 */
 enum hk_flags {
 	HK_FLAG_TIMER		= 1,
 	HK_FLAG_RCU		= (1 << 1),

@@ -1993,6 +1993,14 @@ struct kvm_stats_header {
  * @name: The name string for the stats. Its size is indicated by the
  *        &kvm_stats_header->name_size.
  */
+/* 描述一个kvm的状态
+   flags：状态的注解，如type，unit等
+   exponent：与flag一起确定unit
+   size：该stats的数据items数量，每个数据item都是u64类型
+   offset：
+   unused：
+   name：
+*/
 struct kvm_stats_desc {
 	__u32 flags;
 	__s16 exponent;

@@ -33,6 +33,7 @@ static struct task_struct *enable_owner;
 static int prepare_refcnt;
 static int enable_refcnt;
 
+/* 时钟包含root链表和orphan链表 */
 static HLIST_HEAD(clk_root_list);
 static HLIST_HEAD(clk_orphan_list);
 static LIST_HEAD(clk_notifier_list);
@@ -53,6 +54,15 @@ struct clk_parent_map {
 	int			index;
 };
 
+/* clock的核心数据结构
+   name：名字
+   ops：clk操作函数
+   hw：指向clk硬件
+   dev：指向设备结构体
+   of_node：指向该clk对应的of节点
+   parent：指向其parent
+   parents：私有数据结构，它是一个parent数组
+*/
 struct clk_core {
 	const char		*name;
 	const struct clk_ops	*ops;
@@ -70,7 +80,9 @@ struct clk_core {
 	struct clk_core		*new_parent;
 	struct clk_core		*new_child;
 	unsigned long		flags;
+	/* 是否为orphan时钟 */
 	bool			orphan;
+	/* runtime pm是否使能 */
 	bool			rpm_enabled;
 	unsigned int		enable_count;
 	unsigned int		prepare_count;
@@ -291,15 +303,18 @@ struct clk_hw *clk_hw_get_parent(const struct clk_hw *hw)
 }
 EXPORT_SYMBOL_GPL(clk_hw_get_parent);
 
+/* 从subtree中查找匹配的节点 */
 static struct clk_core *__clk_lookup_subtree(const char *name,
 					     struct clk_core *core)
 {
 	struct clk_core *child;
 	struct clk_core *ret;
 
+	/* 若匹配，则直接返回 */
 	if (!strcmp(core->name, name))
 		return core;
 
+	/* 遍历其children，并递归执行匹配操作 */
 	hlist_for_each_entry(child, &core->children, child_node) {
 		ret = __clk_lookup_subtree(name, child);
 		if (ret)
@@ -309,6 +324,7 @@ static struct clk_core *__clk_lookup_subtree(const char *name,
 	return NULL;
 }
 
+/* 从root clock tree和orphan clock tree中查询匹配的clk_core，并返回 */
 static struct clk_core *clk_core_lookup(const char *name)
 {
 	struct clk_core *root_clk;
@@ -417,6 +433,7 @@ static struct clk_core *clk_core_get(struct clk_core *core, u8 p_index)
 	return hw->core;
 }
 
+/* 填充该index的parent */
 static void clk_core_fill_parent_index(struct clk_core *core, u8 index)
 {
 	struct clk_parent_map *entry = &core->parents[index];
@@ -448,6 +465,7 @@ static struct clk_core *clk_core_get_parent_by_index(struct clk_core *core,
 	if (!core || index >= core->num_parents || !core->parents)
 		return NULL;
 
+	/* 填充该index的parent */
 	if (!core->parents[index].core)
 		clk_core_fill_parent_index(core, index);
 
@@ -861,6 +879,7 @@ void clk_unprepare(struct clk *clk)
 }
 EXPORT_SYMBOL_GPL(clk_unprepare);
 
+/* 调用clk core的prepare函数 */
 static int clk_core_prepare(struct clk_core *core)
 {
 	int ret = 0;
@@ -871,16 +890,19 @@ static int clk_core_prepare(struct clk_core *core)
 		return 0;
 
 	if (core->prepare_count == 0) {
+		/* 调用clk_pm_runtime_get接口，增加引用计数 */
 		ret = clk_pm_runtime_get(core);
 		if (ret)
 			return ret;
 
+		/* 递归调用其parent的clk_core_prepare接口 */
 		ret = clk_core_prepare(core->parent);
 		if (ret)
 			goto runtime_put;
 
 		trace_clk_prepare(core);
 
+		/* 调用当前时钟的prepare接口 */
 		if (core->ops->prepare)
 			ret = core->ops->prepare(core->hw);
 
@@ -899,6 +921,11 @@ static int clk_core_prepare(struct clk_core *core)
 	 * operation which could result in a rate change or rate glitch while
 	 * the clock is prepared.
 	 */
+	/* 增加protect_count计数
+       它是provider在clock被prepared后，用于防止consumer执行可能导致rate改变
+       或rate glitch的操作。
+       即在clock发生改变过程中必须要gate该clock
+	*/
 	if (core->flags & CLK_SET_RATE_GATE)
 		clk_core_rate_protect(core);
 
@@ -942,6 +969,7 @@ int clk_prepare(struct clk *clk)
 }
 EXPORT_SYMBOL_GPL(clk_prepare);
 
+/* disable时钟接口 */
 static void clk_core_disable(struct clk_core *core)
 {
 	lockdep_assert_held(&enable_lock);
@@ -952,6 +980,7 @@ static void clk_core_disable(struct clk_core *core)
 	if (WARN(core->enable_count == 0, "%s already disabled\n", core->name))
 		return;
 
+	/* critical时钟不能disable */
 	if (WARN(core->enable_count == 1 && core->flags & CLK_IS_CRITICAL,
 	    "Disabling critical %s\n", core->name))
 		return;
@@ -961,14 +990,17 @@ static void clk_core_disable(struct clk_core *core)
 
 	trace_clk_disable_rcuidle(core);
 
+	/* 调用其disable接口 */
 	if (core->ops->disable)
 		core->ops->disable(core->hw);
 
 	trace_clk_disable_complete_rcuidle(core);
 
+	/* 递归调用其parent的时钟disable接口 */
 	clk_core_disable(core->parent);
 }
 
+/* disable时钟 */
 static void clk_core_disable_lock(struct clk_core *core)
 {
 	unsigned long flags;
@@ -990,6 +1022,7 @@ static void clk_core_disable_lock(struct clk_core *core)
  * this reason that clk_unprepare and clk_disable are not mutually exclusive.
  * In fact clk_disable must be called before clk_unprepare.
  */
+/* disable时钟 */
 void clk_disable(struct clk *clk)
 {
 	if (IS_ERR_OR_NULL(clk))
@@ -999,6 +1032,7 @@ void clk_disable(struct clk *clk)
 }
 EXPORT_SYMBOL_GPL(clk_disable);
 
+/* clock enable设置接口 */
 static int clk_core_enable(struct clk_core *core)
 {
 	int ret = 0;
@@ -1013,6 +1047,7 @@ static int clk_core_enable(struct clk_core *core)
 		return -ESHUTDOWN;
 
 	if (core->enable_count == 0) {
+		/* 先使能其parent时钟 */
 		ret = clk_core_enable(core->parent);
 
 		if (ret)
@@ -1020,6 +1055,7 @@ static int clk_core_enable(struct clk_core *core)
 
 		trace_clk_enable_rcuidle(core);
 
+		/* 调用当前时钟的enable回调 */
 		if (core->ops->enable)
 			ret = core->ops->enable(core->hw);
 
@@ -1035,6 +1071,7 @@ static int clk_core_enable(struct clk_core *core)
 	return 0;
 }
 
+/* clock enable接口 */
 static int clk_core_enable_lock(struct clk_core *core)
 {
 	unsigned long flags;
@@ -2054,6 +2091,7 @@ static struct clk_core *clk_propagate_rate_change(struct clk_core *core,
  * walk down a subtree and set the new rates notifying the rate
  * change on the way
  */
+/* 改变clk的rate */
 static void clk_change_rate(struct clk_core *core)
 {
 	struct clk_core *child;
@@ -2170,6 +2208,7 @@ static unsigned long clk_core_req_round_rate_nolock(struct clk_core *core,
 	return ret ? 0 : req.rate;
 }
 
+/* 为clk设置一个新的rate */
 static int clk_core_set_rate_nolock(struct clk_core *core,
 				    unsigned long req_rate)
 {
@@ -2180,6 +2219,7 @@ static int clk_core_set_rate_nolock(struct clk_core *core,
 	if (!core)
 		return 0;
 
+	/* 获取rate */
 	rate = clk_core_req_round_rate_nolock(core, req_rate);
 
 	/* bail early if nothing to do */
@@ -2210,6 +2250,7 @@ static int clk_core_set_rate_nolock(struct clk_core *core,
 	}
 
 	/* change the rates */
+	/* 改变clk的rate */
 	clk_change_rate(top);
 
 	core->req_rate = req_rate;
@@ -2240,6 +2281,7 @@ err:
  *
  * Returns 0 on success, -EERROR otherwise.
  */
+/* 为clk设置一个新的rate */
 int clk_set_rate(struct clk *clk, unsigned long rate)
 {
 	int ret;
@@ -2442,10 +2484,12 @@ struct clk *clk_get_parent(struct clk *clk)
 }
 EXPORT_SYMBOL_GPL(clk_get_parent);
 
+/* 初始化core的parent */
 static struct clk_core *__clk_init_parent(struct clk_core *core)
 {
 	u8 index = 0;
 
+	/* 调用其get_parent回调，获取其parent的index */
 	if (core->num_parents > 1 && core->ops->get_parent)
 		index = core->ops->get_parent(core->hw);
 
@@ -2502,6 +2546,7 @@ bool clk_has_parent(struct clk *clk, struct clk *parent)
 }
 EXPORT_SYMBOL_GPL(clk_has_parent);
 
+/* 设置一个clk的parent clk */
 static int clk_core_set_parent_nolock(struct clk_core *core,
 				      struct clk_core *parent)
 {
@@ -2590,6 +2635,7 @@ EXPORT_SYMBOL_GPL(clk_hw_set_parent);
  *
  * Returns 0 on success, -EERROR otherwise.
  */
+/* 对于一个mux clock，切换其parent */
 int clk_set_parent(struct clk *clk, struct clk *parent)
 {
 	int ret;
@@ -2687,6 +2733,7 @@ int clk_set_phase(struct clk *clk, int degrees)
 }
 EXPORT_SYMBOL_GPL(clk_set_phase);
 
+/* 获取时钟相位 */
 static int clk_core_get_phase(struct clk_core *core)
 {
 	int ret;
@@ -2696,6 +2743,7 @@ static int clk_core_get_phase(struct clk_core *core)
 		return 0;
 
 	/* Always try to update cached phase if possible */
+	/* 调用其get_phase回调 */
 	ret = core->ops->get_phase(core->hw);
 	if (ret >= 0)
 		core->phase = ret;
@@ -2725,6 +2773,7 @@ int clk_get_phase(struct clk *clk)
 }
 EXPORT_SYMBOL_GPL(clk_get_phase);
 
+/* 默认占空比为1/2 */
 static void clk_core_reset_duty_cycle_nolock(struct clk_core *core)
 {
 	/* Assume a default value of 50% */
@@ -2734,6 +2783,7 @@ static void clk_core_reset_duty_cycle_nolock(struct clk_core *core)
 
 static int clk_core_update_duty_cycle_parent_nolock(struct clk_core *core);
 
+/* 更新时钟的占空比 */
 static int clk_core_update_duty_cycle_nolock(struct clk_core *core)
 {
 	struct clk_duty *duty = &core->duty;
@@ -2742,6 +2792,7 @@ static int clk_core_update_duty_cycle_nolock(struct clk_core *core)
 	if (!core->ops->get_duty_cycle)
 		return clk_core_update_duty_cycle_parent_nolock(core);
 
+	/* 调用其获取占空比回调 */
 	ret = core->ops->get_duty_cycle(core->hw, duty);
 	if (ret)
 		goto reset;
@@ -2759,15 +2810,20 @@ reset:
 	return ret;
 }
 
+/* 根据父时钟的占空比更新当前时钟的占空比 */
 static int clk_core_update_duty_cycle_parent_nolock(struct clk_core *core)
 {
 	int ret = 0;
 
+	/* 若其存在parent，且设置了CLK_DUTY_CYCLE_PARENT标志，则使用其parent的占空比。
+       作为该时钟的占空比
+	*/
 	if (core->parent &&
 	    core->flags & CLK_DUTY_CYCLE_PARENT) {
 		ret = clk_core_update_duty_cycle_nolock(core->parent);
 		memcpy(&core->duty, &core->parent->duty, sizeof(core->duty));
 	} else {
+		/* 将其设置为默认占空比，即1/2 */
 		clk_core_reset_duty_cycle_nolock(core);
 	}
 
@@ -3368,6 +3424,7 @@ static inline void clk_debug_unregister(struct clk_core *core)
 }
 #endif
 
+/* 为orphan clock重新设置parent */
 static void clk_core_reparent_orphans_nolock(void)
 {
 	struct clk_core *orphan;
@@ -3377,7 +3434,9 @@ static void clk_core_reparent_orphans_nolock(void)
 	 * walk the list of orphan clocks and reparent any that newly finds a
 	 * parent.
 	 */
+	/* 遍历orphan clock链表 */
 	hlist_for_each_entry_safe(orphan, tmp2, &clk_orphan_list, child_node) {
+		/* 初始化其parent */
 		struct clk_core *parent = __clk_init_parent(orphan);
 
 		/*
@@ -3403,6 +3462,9 @@ static void clk_core_reparent_orphans_nolock(void)
  * Initializes the lists in struct clk_core, queries the hardware for the
  * parent and rate and sets them both.
  */
+/* 初始化clk_core结构体中的数据结构，初始化clk_core结构体中的链表，查询
+   parent的硬件和pl，并设置它们
+*/
 static int __clk_core_init(struct clk_core *core)
 {
 	int ret;
@@ -3420,6 +3482,7 @@ static int __clk_core_init(struct clk_core *core)
 		goto unlock;
 
 	/* check to see if a clock with this name is already registered */
+	/* 遍历root时钟链表和orphan时钟链表，以确定其是否已被注册 */
 	if (clk_core_lookup(core->name)) {
 		pr_debug("%s: clk %s already initialized\n",
 				__func__, core->name);
@@ -3428,6 +3491,7 @@ static int __clk_core_init(struct clk_core *core)
 	}
 
 	/* check that clk_ops are sane.  See Documentation/driver-api/clk.rst */
+	/* 检查时钟ops是否一致 */
 	if (core->ops->set_rate &&
 	    !((core->ops->round_rate || core->ops->determine_rate) &&
 	      core->ops->recalc_rate)) {
@@ -3473,6 +3537,7 @@ static int __clk_core_init(struct clk_core *core)
 	 * If it exist, this callback should called before any other callback of
 	 * the clock
 	 */
+	/* 若其含有平台相关的初始化函数，则调用该接口 */
 	if (core->ops->init) {
 		ret = core->ops->init(core->hw);
 		if (ret)
@@ -3491,6 +3556,10 @@ static int __clk_core_init(struct clk_core *core)
 	 * clocks and re-parent any that are children of the clock currently
 	 * being clk_init'd.
 	 */
+	/* 将其child_node添加到parent的children链表中，
+       若其含有parent，则将其child_node添加到root链表中，
+       否则，将其添加到orphan链表中
+	*/
 	if (parent) {
 		hlist_add_head(&core->child_node, &parent->children);
 		core->orphan = parent->orphan;
@@ -3509,6 +3578,7 @@ static int __clk_core_init(struct clk_core *core)
 	 * parent (or is orphaned) then accuracy is set to zero (perfect
 	 * clock).
 	 */
+	/* 设置其时钟的精度 */
 	if (core->ops->recalc_accuracy)
 		core->accuracy = core->ops->recalc_accuracy(core->hw,
 					clk_core_get_accuracy_no_lock(parent));
@@ -3522,6 +3592,7 @@ static int __clk_core_init(struct clk_core *core)
 	 * Since a phase is by definition relative to its parent, just
 	 * query the current clock phase, or just assume it's in phase.
 	 */
+	/* 获取时钟相位 */
 	phase = clk_core_get_phase(core);
 	if (phase < 0) {
 		ret = phase;
@@ -3533,6 +3604,7 @@ static int __clk_core_init(struct clk_core *core)
 	/*
 	 * Set clk's duty cycle.
 	 */
+	/* 设置时钟的占空比 */
 	clk_core_update_duty_cycle_nolock(core);
 
 	/*
@@ -3541,6 +3613,10 @@ static int __clk_core_init(struct clk_core *core)
 	 * parent's rate.  If a clock doesn't have a parent (or is orphaned)
 	 * then rate is set to zero.
 	 */
+	/* 设置时钟的频率，优先使用recalc_rate回调计算其频率。
+       若其不含有该回调，且含有parent clk，则使用其parent的频率。
+       否则，将其频率设置为0
+	*/
 	if (core->ops->recalc_rate)
 		rate = core->ops->recalc_rate(core->hw,
 				clk_core_get_rate_nolock(parent));
@@ -3555,7 +3631,9 @@ static int __clk_core_init(struct clk_core *core)
 	 * don't get accidentally disabled when walking the orphan tree and
 	 * reparenting clocks
 	 */
+	/* critical clk的处理 */
 	if (core->flags & CLK_IS_CRITICAL) {
+		/* 调用clock prepare接口 */
 		ret = clk_core_prepare(core);
 		if (ret) {
 			pr_warn("%s: critical clk '%s' failed to prepare\n",
@@ -3563,6 +3641,7 @@ static int __clk_core_init(struct clk_core *core)
 			goto out;
 		}
 
+		/* enable该时钟 */
 		ret = clk_core_enable_lock(core);
 		if (ret) {
 			pr_warn("%s: critical clk '%s' failed to enable\n",
@@ -3572,6 +3651,7 @@ static int __clk_core_init(struct clk_core *core)
 		}
 	}
 
+	/* 为orphan clock重新设置parent */
 	clk_core_reparent_orphans_nolock();
 
 
@@ -3595,6 +3675,7 @@ unlock:
  * @core: clk to add consumer to
  * @clk: consumer to link to a clk
  */
+/* 将clk与consumer连接起来 */
 static void clk_core_link_consumer(struct clk_core *core, struct clk *clk)
 {
 	clk_prepare_lock();
@@ -3724,6 +3805,7 @@ static int clk_cpy_name(const char **dst_p, const char *src, bool must_exist)
 	return 0;
 }
 
+/* populate parent map函数 */
 static int clk_core_populate_parent_map(struct clk_core *core,
 					const struct clk_init_data *init)
 {
@@ -3741,12 +3823,14 @@ static int clk_core_populate_parent_map(struct clk_core *core,
 	 * Avoid unnecessary string look-ups of clk_core's possible parents by
 	 * having a cache of names/clk_hw pointers to clk_core pointers.
 	 */
+	/* 分配parent map结构体内容 */
 	parents = kcalloc(num_parents, sizeof(*parents), GFP_KERNEL);
 	core->parents = parents;
 	if (!parents)
 		return -ENOMEM;
 
 	/* Copy everything over because it might be __initdata */
+	/* 从init data中获取parent信息，并填充到clk_parent_map中 */
 	for (i = 0, parent = parents; i < num_parents; i++, parent++) {
 		parent->index = -1;
 		if (parent_names) {
@@ -3801,6 +3885,7 @@ static void clk_core_free_parent_map(struct clk_core *core)
 	kfree(core->parents);
 }
 
+/* clk注册函数 */
 static struct clk *
 __clk_register(struct device *dev, struct device_node *np, struct clk_hw *hw)
 {
@@ -3815,12 +3900,14 @@ __clk_register(struct device *dev, struct device_node *np, struct clk_hw *hw)
 	 */
 	hw->init = NULL;
 
+	/* 分配一个clk_core结构体 */
 	core = kzalloc(sizeof(*core), GFP_KERNEL);
 	if (!core) {
 		ret = -ENOMEM;
 		goto fail_out;
 	}
 
+	/* 根据clk_init_data的内容，设置clk_core结构体的成员 */
 	core->name = kstrdup_const(init->name, GFP_KERNEL);
 	if (!core->name) {
 		ret = -ENOMEM;
@@ -3833,6 +3920,7 @@ __clk_register(struct device *dev, struct device_node *np, struct clk_hw *hw)
 	}
 	core->ops = init->ops;
 
+	/* 是否使能runtime pm */
 	if (dev && pm_runtime_enabled(dev))
 		core->rpm_enabled = true;
 	core->dev = dev;
@@ -3842,32 +3930,41 @@ __clk_register(struct device *dev, struct device_node *np, struct clk_hw *hw)
 	core->hw = hw;
 	core->flags = init->flags;
 	core->num_parents = init->num_parents;
+	/* 最低和最高频率分别初始化为0和ULONG_MAX */
 	core->min_rate = 0;
 	core->max_rate = ULONG_MAX;
 	hw->core = core;
 
+	/* populate parent map函数 */
 	ret = clk_core_populate_parent_map(core, init);
 	if (ret)
 		goto fail_parents;
 
+	/* 初始化其clks链表 */
 	INIT_HLIST_HEAD(&core->clks);
 
 	/*
 	 * Don't call clk_hw_create_clk() here because that would pin the
 	 * provider module to itself and prevent it from ever being removed.
 	 */
+	/* 分配struct clk结构体内存 */
 	hw->clk = alloc_clk(core, NULL, NULL);
 	if (IS_ERR(hw->clk)) {
 		ret = PTR_ERR(hw->clk);
 		goto fail_create_clk;
 	}
 
+	/* 将clk与consumer连接起来，即将hw->clk的clks_node节点添加到
+	   hw->core的clks链表中 
+	*/
 	clk_core_link_consumer(hw->core, hw->clk);
 
+	/* 初始化clock */
 	ret = __clk_core_init(core);
 	if (!ret)
 		return hw->clk;
 
+	/* 失败处理 */
 	clk_prepare_lock();
 	clk_core_unlink_consumer(hw->clk);
 	clk_prepare_unlock();
@@ -3894,6 +3991,7 @@ fail_out:
  * @dev->parent if dev doesn't have a device node, or NULL if neither
  * @dev or @dev->parent have a device node.
  */
+/* 获取该设备或其父设备的device node节点 */
 static struct device_node *dev_or_parent_of_node(struct device *dev)
 {
 	struct device_node *np;
@@ -3921,6 +4019,11 @@ static struct device_node *dev_or_parent_of_node(struct device *dev)
  * rest of the clock API.  In the event of an error clk_register will return an
  * error code; drivers must test for an error code after calling clk_register.
  */
+/* 分配一个新的clock，注册并返回一个opaque cookie
+   dev：注册该clock的设备
+   hw：链接到硬件相关的clock数据
+
+*/
 struct clk *clk_register(struct device *dev, struct clk_hw *hw)
 {
 	return __clk_register(dev, dev_or_parent_of_node(dev), hw);
@@ -3937,6 +4040,9 @@ EXPORT_SYMBOL_GPL(clk_register);
  * less than zero indicating failure. Drivers must test for an error code after
  * calling clk_hw_register().
  */
+/* 注册一个clk_hw
+   clk_hw_register是为新clock节点populating clock tree的原始接口。
+*/
 int clk_hw_register(struct device *dev, struct clk_hw *hw)
 {
 	return PTR_ERR_OR_ZERO(__clk_register(dev, dev_or_parent_of_node(dev),
@@ -3955,6 +4061,7 @@ EXPORT_SYMBOL_GPL(clk_hw_register);
  * less than zero indicating failure. Drivers must test for an error code after
  * calling of_clk_hw_register().
  */
+/* of的hw时钟注册函数 */
 int of_clk_hw_register(struct device_node *node, struct clk_hw *hw)
 {
 	return PTR_ERR_OR_ZERO(__clk_register(NULL, node, hw));
@@ -3962,6 +4069,7 @@ int of_clk_hw_register(struct device_node *node, struct clk_hw *hw)
 EXPORT_SYMBOL_GPL(of_clk_hw_register);
 
 /* Free memory allocated for a clock. */
+/* 释放为一个clock分配的内存 */
 static void __clk_release(struct kref *ref)
 {
 	struct clk_core *core = container_of(ref, struct clk_core, ref);
@@ -3978,6 +4086,7 @@ static void __clk_release(struct kref *ref)
  * after clk_unregister() was called on a clock and until last clock
  * consumer calls clk_put() and the struct clk object is freed.
  */
+/* 未注册clocks的空的clk_ops */
 static int clk_nodrv_prepare_enable(struct clk_hw *hw)
 {
 	return -ENXIO;
@@ -3999,6 +4108,7 @@ static int clk_nodrv_set_parent(struct clk_hw *hw, u8 index)
 	return -ENXIO;
 }
 
+/* clk的nodrv回调函数 */
 static const struct clk_ops clk_nodrv_ops = {
 	.enable		= clk_nodrv_prepare_enable,
 	.disable	= clk_nodrv_disable_unprepare,
@@ -4040,6 +4150,7 @@ static void clk_core_evict_parent_cache(struct clk_core *core)
  * clk_unregister - unregister a currently registered clock
  * @clk: clock to unregister
  */
+/* 注销一个clk */
 void clk_unregister(struct clk *clk)
 {
 	unsigned long flags;
@@ -4052,6 +4163,7 @@ void clk_unregister(struct clk *clk)
 
 	clk_prepare_lock();
 
+	/* 获取clk的操作函数 */
 	ops = clk->core->ops;
 	if (ops == &clk_nodrv_ops) {
 		pr_err("%s: unregistered clock: %s\n", __func__,
@@ -4066,6 +4178,7 @@ void clk_unregister(struct clk *clk)
 	clk->core->ops = &clk_nodrv_ops;
 	clk_enable_unlock(flags);
 
+	/* 调用该时钟的terminate回调函数 */
 	if (ops->terminate)
 		ops->terminate(clk->core->hw);
 
@@ -4102,12 +4215,14 @@ EXPORT_SYMBOL_GPL(clk_unregister);
  * clk_hw_unregister - unregister a currently registered clk_hw
  * @hw: hardware-specific clock data to unregister
  */
+/* 注销一个当前已注册的clk_hw */
 void clk_hw_unregister(struct clk_hw *hw)
 {
 	clk_unregister(hw->clk);
 }
 EXPORT_SYMBOL_GPL(clk_hw_unregister);
 
+/* devm注销一个clk的回调 */
 static void devm_clk_unregister_cb(struct device *dev, void *res)
 {
 	clk_unregister(*(struct clk **)res);
@@ -4128,18 +4243,22 @@ static void devm_clk_hw_unregister_cb(struct device *dev, void *res)
  * Clocks returned from this function are automatically clk_unregister()ed on
  * driver detach. See clk_register() for more information.
  */
+/* 带资源管理的clk_register函数 */
 struct clk *devm_clk_register(struct device *dev, struct clk_hw *hw)
 {
 	struct clk *clk;
 	struct clk **clkp;
 
+	/* 内存分配 */
 	clkp = devres_alloc(devm_clk_unregister_cb, sizeof(*clkp), GFP_KERNEL);
 	if (!clkp)
 		return ERR_PTR(-ENOMEM);
 
+	/* 注册clock */
 	clk = clk_register(dev, hw);
 	if (!IS_ERR(clk)) {
 		*clkp = clk;
+		/* 将clock加入到设备的资源中 */
 		devres_add(dev, clkp);
 	} else {
 		devres_free(clkp);
@@ -4158,6 +4277,7 @@ EXPORT_SYMBOL_GPL(devm_clk_register);
  * automatically clk_hw_unregister()ed on driver detach. See clk_hw_register()
  * for more information.
  */
+/* 由该函数注册的clocks在驱动detach时会自动调用clk_hw_unregister函数 */
 int devm_clk_hw_register(struct device *dev, struct clk_hw *hw)
 {
 	struct clk_hw **hwp;
@@ -4332,6 +4452,7 @@ void __clk_put(struct clk *clk)
  * allocation failure; otherwise, passes along the return value of
  * srcu_notifier_chain_register().
  */
+/* 添加一个时钟频率改变的通知 */
 int clk_notifier_register(struct clk *clk, struct notifier_block *nb)
 {
 	struct clk_notifier *cn;
@@ -4343,21 +4464,27 @@ int clk_notifier_register(struct clk *clk, struct notifier_block *nb)
 	clk_prepare_lock();
 
 	/* search the list of notifiers for this clk */
+	/* 遍历clk_notifier_list通知链表，查找与给定clk匹配的通知 */
 	list_for_each_entry(cn, &clk_notifier_list, node)
 		if (cn->clk == clk)
 			goto found;
 
 	/* if clk wasn't in the notifier list, allocate new clk_notifier */
+	/* 若未找到，则分配一个通知结构体 */
 	cn = kzalloc(sizeof(*cn), GFP_KERNEL);
 	if (!cn)
 		goto out;
 
+	/* 设置通知的clk成员 */
 	cn->clk = clk;
+	/* 设置其通知链表头 */
 	srcu_init_notifier_head(&cn->notifier_head);
 
+	/* 将其添加到全局通知链表中 */
 	list_add(&cn->node, &clk_notifier_list);
 
 found:
+	/* 将给定通知添加到该时钟的通知链表中，并增加其通知计数 */
 	ret = srcu_notifier_chain_register(&cn->notifier_head, nb);
 
 	clk->core->notifier_count++;
@@ -4380,6 +4507,7 @@ EXPORT_SYMBOL_GPL(clk_notifier_register);
  * Returns -EINVAL if called with null arguments; otherwise, passes
  * along the return value of srcu_notifier_chain_unregister().
  */
+/* 注销一个时钟通知 */
 int clk_notifier_unregister(struct clk *clk, struct notifier_block *nb)
 {
 	struct clk_notifier *cn;
@@ -4466,6 +4594,7 @@ static void clk_core_reparent_orphans(void)
  *       struct clk_hw for the given clock specifier
  * @data: context pointer to be passed into @get callback
  */
+/* clock provider注册结构体 */
 struct of_clk_provider {
 	struct list_head link;
 
@@ -4532,6 +4661,7 @@ EXPORT_SYMBOL_GPL(of_clk_hw_onecell_get);
  *
  * This function is *deprecated*. Use of_clk_add_hw_provider() instead.
  */
+/* 为一个node注册一个时钟provider */
 int of_clk_add_provider(struct device_node *np,
 			struct clk *(*clk_src_get)(struct of_phandle_args *clkspec,
 						   void *data),
@@ -4543,6 +4673,7 @@ int of_clk_add_provider(struct device_node *np,
 	if (!np)
 		return 0;
 
+	/* 分配一个clk provider结构体 */
 	cp = kzalloc(sizeof(*cp), GFP_KERNEL);
 	if (!cp)
 		return -ENOMEM;
@@ -4551,6 +4682,7 @@ int of_clk_add_provider(struct device_node *np,
 	cp->data = data;
 	cp->get = clk_src_get;
 
+	/* 将其添加到全局链表of_clk_providers中 */
 	mutex_lock(&of_clk_mutex);
 	list_add(&cp->link, &of_clk_providers);
 	mutex_unlock(&of_clk_mutex);
@@ -4763,6 +4895,10 @@ EXPORT_SYMBOL(devm_of_clk_del_provider);
  * if @name is NULL or -EINVAL if @name is non-NULL and it can't be found in
  * the "clock-names" property of @np.
  */
+/* 为一个给定设备节点解析dt clock。
+   它会解析一个设备节点的clocks和clock-names属性，以查找期望index或name的phandle
+   和cells。clock result将通过out_args输出。若name为非空，则index参数被忽略
+*/
 static int of_parse_clkspec(const struct device_node *np, int index,
 			    const char *name, struct of_phandle_args *out_args)
 {
@@ -4799,18 +4935,22 @@ static int of_parse_clkspec(const struct device_node *np, int index,
 	return ret;
 }
 
+/* 获取clk_hw结构体 */
 static struct clk_hw *
 __of_clk_get_hw_from_provider(struct of_clk_provider *provider,
 			      struct of_phandle_args *clkspec)
 {
 	struct clk *clk;
 
+	/* 通过provider的get_hw回调获取 */
 	if (provider->get_hw)
 		return provider->get_hw(clkspec, provider->data);
 
+	/* 通过provider的get回调获取 */
 	clk = provider->get(clkspec, provider->data);
 	if (IS_ERR(clk))
 		return ERR_CAST(clk);
+	/* 若clk存在，则根军clk->core->hw获取 */
 	return __clk_get_hw(clk);
 }
 
@@ -4823,6 +4963,7 @@ of_clk_get_hw_from_clkspec(struct of_phandle_args *clkspec)
 	if (!clkspec)
 		return ERR_PTR(-EINVAL);
 
+	/* 遍历of_clk_providers链表，并查找与给定参数device node相同的clk_hw结构体 */
 	mutex_lock(&of_clk_mutex);
 	list_for_each_entry(provider, &of_clk_providers, link) {
 		if (provider->node == clkspec->np) {
@@ -4844,6 +4985,7 @@ of_clk_get_hw_from_clkspec(struct of_phandle_args *clkspec)
  * providers, an input is a clock specifier data structure as returned
  * from the of_parse_phandle_with_args() function call.
  */
+/* 从provider中获取clk */
 struct clk *of_clk_get_from_provider(struct of_phandle_args *clkspec)
 {
 	struct clk_hw *hw = of_clk_get_hw_from_clkspec(clkspec);
@@ -5001,6 +5143,11 @@ int of_clk_parent_fill(struct device_node *np, const char **parents,
 }
 EXPORT_SYMBOL_GPL(of_clk_parent_fill);
 
+/* clock provider结构体
+   clk_init_cb：初始化回调函数
+   np：设备节点
+   node：节点
+*/
 struct clock_provider {
 	void (*clk_init_cb)(struct device_node *);
 	struct device_node *np;
@@ -5012,11 +5159,15 @@ struct clock_provider {
  * checks that the provider for this parent clock was initialized, in
  * this case the parent clock will be ready.
  */
+/* 该函数查找一个parent clock。若找到则检查这个parent clock的provider，
+   以确定其是否被初始化，若其已被初始化则parent clock为ready状态
+*/
 static int parent_ready(struct device_node *np)
 {
 	int i = 0;
 
 	while (true) {
+		/* 获取当前np对应的clk */
 		struct clk *clk = of_clk_get(np, i);
 
 		/* this parent is ready we can check the next one */
@@ -5027,6 +5178,7 @@ static int parent_ready(struct device_node *np)
 		}
 
 		/* at least one parent is not ready, we exit now */
+		/* 至少有一个parent未ready */
 		if (PTR_ERR(clk) == -EPROBE_DEFER)
 			return 0;
 
@@ -5060,6 +5212,11 @@ static int parent_ready(struct device_node *np)
  *
  * Return: error code or zero on success
  */
+/* 根据dt设置CLK_IS_CRITICAL标志
+   不要使用本函数，它只存在于legacy设备树bindings，如过时的一个node一个clock
+   的style。这些bindings通常将所有clock数据放到dts中，且linux驱动不含有时钟
+   数据，因此使得驱动不能设置该flag
+*/
 int of_clk_detect_critical(struct device_node *np, int index,
 			   unsigned long *flags)
 {
@@ -5085,6 +5242,9 @@ int of_clk_detect_critical(struct device_node *np, int index,
  * and calls their initialization functions. It also does it by trying
  * to follow the dependencies.
  */
+/* 从dt扫描和初始化clock providers
+   该函数为匹配的clock providers扫描设备树，并且调用其初始化函数
+*/
 void __init of_clk_init(const struct of_device_id *matches)
 {
 	const struct of_device_id *match;
@@ -5098,12 +5258,15 @@ void __init of_clk_init(const struct of_device_id *matches)
 		matches = &__clk_of_table;
 
 	/* First prepare the list of the clocks providers */
+	/* 查找所有设备节点,并分别与给定的match列表比较，以判断该节点是否为clk of table
+	   的设备节点,若是则初始化provider结构体的clk_init_cb和np成员。*/
 	for_each_matching_node_and_match(np, matches, &match) {
 		struct clock_provider *parent;
 
 		if (!of_device_is_available(np))
 			continue;
 
+		/* 分配一个clock_provider结构体 */
 		parent = kzalloc(sizeof(*parent), GFP_KERNEL);
 		if (!parent) {
 			list_for_each_entry_safe(clk_provider, next,
@@ -5116,6 +5279,7 @@ void __init of_clk_init(const struct of_device_id *matches)
 			return;
 		}
 
+		/* 初始化其成员并将节点该添加到clk_provider_list链表中 */
 		parent->clk_init_cb = match->data;
 		parent->np = of_node_get(np);
 		list_add_tail(&parent->node, &clk_provider_list);
@@ -5123,6 +5287,7 @@ void __init of_clk_init(const struct of_device_id *matches)
 
 	while (!list_empty(&clk_provider_list)) {
 		is_init_done = false;
+		/* 遍历clk_provider_list链表 */
 		list_for_each_entry_safe(clk_provider, next,
 					&clk_provider_list, node) {
 			if (force || parent_ready(clk_provider->np)) {
@@ -5131,9 +5296,12 @@ void __init of_clk_init(const struct of_device_id *matches)
 				of_node_set_flag(clk_provider->np,
 						 OF_POPULATED);
 
+				/* 调用其clk_init_cb函数，该函数是由CLK_OF_DECLARE宏注册的 */
 				clk_provider->clk_init_cb(clk_provider->np);
+				/* 设置其parent和rate */
 				of_clk_set_defaults(clk_provider->np, true);
 
+				/* 从clk_provider_list链表中删除该节点 */
 				list_del(&clk_provider->node);
 				of_node_put(clk_provider->np);
 				kfree(clk_provider);

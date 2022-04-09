@@ -36,6 +36,7 @@ static int __init delayacct_setup_enable(char *str)
 }
 __setup("delayacct", delayacct_setup_enable);
 
+/* delayacct初始化 */
 void delayacct_init(void)
 {
 	delayacct_cache = KMEM_CACHE(task_delay_info, SLAB_PANIC|SLAB_ACCOUNT);
@@ -44,6 +45,7 @@ void delayacct_init(void)
 }
 
 #ifdef CONFIG_PROC_SYSCTL
+/* 读取或设置delayacct是否使能标志 */
 int sysctl_delayacct(struct ctl_table *table, int write, void *buffer,
 		     size_t *lenp, loff_t *ppos)
 {
@@ -65,8 +67,10 @@ int sysctl_delayacct(struct ctl_table *table, int write, void *buffer,
 }
 #endif
 
+/* 初始化任务的delayacct */
 void __delayacct_tsk_init(struct task_struct *tsk)
 {
+	/* 分配该任务的delays结构体内存 */
 	tsk->delays = kmem_cache_zalloc(delayacct_cache, GFP_KERNEL);
 	if (tsk->delays)
 		raw_spin_lock_init(&tsk->delays->lock);

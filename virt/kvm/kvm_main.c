@@ -202,6 +202,7 @@ bool kvm_is_transparent_hugepage(kvm_pfn_t pfn)
 /*
  * Switches to specified vcpu, until a matching vcpu_put()
  */
+/* vcpu的负载计算 */
 void vcpu_load(struct kvm_vcpu *vcpu)
 {
 	int cpu = get_cpu();
@@ -5355,7 +5356,7 @@ static void check_processor_compat(void *data)
 
 	*c->ret = kvm_arch_check_processor_compat(c->opaque);
 }
-
+/* kvm初始化函数 */
 int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
 		  struct module *module)
 {

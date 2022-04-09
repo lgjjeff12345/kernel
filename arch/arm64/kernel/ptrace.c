@@ -153,6 +153,7 @@ unsigned long regs_get_kernel_stack_nth(struct pt_regs *regs, unsigned int n)
 /*
  * Called by kernel/ptrace.c when detaching..
  */
+/* detach一个trace线程时调用 */
 void ptrace_disable(struct task_struct *child)
 {
 	/*
@@ -160,6 +161,7 @@ void ptrace_disable(struct task_struct *child)
 	 * grown its fair share of arch-specific worts and changing it
 	 * is likely to cause regressions on obscure architectures.
 	 */
+	/* 关闭线程的单步模式 */
 	user_disable_single_step(child);
 }
 
@@ -1716,16 +1718,19 @@ long compat_arch_ptrace(struct task_struct *child, compat_long_t request,
 						    datap);
 			break;
 
+		/* tls寄存器的值 */
 		case COMPAT_PTRACE_GET_THREAD_AREA:
 			ret = put_user((compat_ulong_t)child->thread.uw.tp_value,
 				       (compat_ulong_t __user *)datap);
 			break;
 
+		/* 设置系统调用号 */
 		case COMPAT_PTRACE_SET_SYSCALL:
 			task_pt_regs(child)->syscallno = data;
 			ret = 0;
 			break;
 
+		/* 获取vp寄存器 */
 		case COMPAT_PTRACE_GETVFPREGS:
 			ret = copy_regset_to_user(child,
 						  &user_aarch32_view,
@@ -1734,6 +1739,7 @@ long compat_arch_ptrace(struct task_struct *child, compat_long_t request,
 						  datap);
 			break;
 
+		/* 设置vp寄存器 */
 		case COMPAT_PTRACE_SETVFPREGS:
 			ret = copy_regset_from_user(child,
 						    &user_aarch32_view,
@@ -1743,10 +1749,12 @@ long compat_arch_ptrace(struct task_struct *child, compat_long_t request,
 			break;
 
 #ifdef CONFIG_HAVE_HW_BREAKPOINT
+		/* 获取硬件断点寄存器 */
 		case COMPAT_PTRACE_GETHBPREGS:
 			ret = compat_ptrace_gethbpregs(child, addr, datap);
 			break;
 
+		/* 设置硬件断点寄存器 */
 		case COMPAT_PTRACE_SETHBPREGS:
 			ret = compat_ptrace_sethbpregs(child, addr, datap);
 			break;
@@ -1949,9 +1957,11 @@ static int valid_native_regs(struct user_pt_regs *regs)
  * Are the current registers suitable for user mode? (used to maintain
  * security in signal handlers)
  */
+/* 校验用户寄存器 */
 int valid_user_regs(struct user_pt_regs *regs, struct task_struct *task)
 {
 	/* https://lore.kernel.org/lkml/20191118131525.GA4180@willie-the-truck */
+	/* reset用户的单步寄存器 */
 	user_regs_reset_single_step(regs, task);
 
 	if (is_compat_thread(task_thread_info(task)))

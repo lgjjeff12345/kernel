@@ -254,6 +254,7 @@ static bool kvm_host_owns_hyp_mappings(void)
 	return true;
 }
 
+/* 创建hypervisor页表 */
 static int __create_hyp_mappings(unsigned long start, unsigned long size,
 				 unsigned long phys, enum kvm_pgtable_prot prot)
 {
@@ -1323,9 +1324,11 @@ phys_addr_t kvm_get_idmap_vector(void)
 	return hyp_idmap_vector;
 }
 
+/* 映射idmap的代码段 */
 static int kvm_map_idmap_text(void)
 {
 	unsigned long size = hyp_idmap_end - hyp_idmap_start;
+	/* 为idmap代码段创建hypervisor页表 */
 	int err = __create_hyp_mappings(hyp_idmap_start, size, hyp_idmap_start,
 					PAGE_HYP_EXEC);
 	if (err)
@@ -1348,22 +1351,29 @@ static struct kvm_pgtable_mm_ops kvm_hyp_mm_ops = {
 	.virt_to_phys		= kvm_host_pa,
 };
 
+/* 分配hyp pgd和设置hyp identity mapping */
 int kvm_mmu_init(u32 *hyp_va_bits)
 {
 	int err;
 
+	/* __hyp_idmap_text_start和__hyp_idmap_text_end由链接文件定义 */
 	hyp_idmap_start = __pa_symbol(__hyp_idmap_text_start);
 	hyp_idmap_start = ALIGN_DOWN(hyp_idmap_start, PAGE_SIZE);
 	hyp_idmap_end = __pa_symbol(__hyp_idmap_text_end);
 	hyp_idmap_end = ALIGN(hyp_idmap_end, PAGE_SIZE);
+	/* __kvm_hyp_init初始化函数，定义在arch/arm64/kvm/hyp/nvhe/hyp-init.S
+	   的Line25 
+	*/
 	hyp_idmap_vector = __pa_symbol(__kvm_hyp_init);
 
 	/*
 	 * We rely on the linker script to ensure at build time that the HYP
 	 * init code does not cross a page boundary.
 	 */
+	/* hyper的初始化数据不能跨越page边界 */
 	BUG_ON((hyp_idmap_start ^ (hyp_idmap_end - 1)) & PAGE_MASK);
 
+	/* hypervisor的虚拟地址位数 */
 	*hyp_va_bits = 64 - ((idmap_t0sz & TCR_T0SZ_MASK) >> TCR_T0SZ_OFFSET);
 	kvm_debug("Using %u-bit virtual addresses at EL2\n", *hyp_va_bits);
 	kvm_debug("IDMAP page: %lx\n", hyp_idmap_start);
@@ -1390,10 +1400,12 @@ int kvm_mmu_init(u32 *hyp_va_bits)
 		goto out;
 	}
 
+	/* 初始化kvm的页表结构体 */
 	err = kvm_pgtable_hyp_init(hyp_pgtable, *hyp_va_bits, &kvm_hyp_mm_ops);
 	if (err)
 		goto out_free_pgtable;
 
+	/* 映射idmap的代码段 */
 	err = kvm_map_idmap_text();
 	if (err)
 		goto out_destroy_pgtable;

@@ -66,6 +66,10 @@ struct clk_rate_request {
  * @num:	Numerator of the duty cycle ratio
  * @den:	Denominator of the duty cycle ratio
  */
+/* 时钟占空比编码
+   num：占空比的分子
+   den：占空比的分母
+*/
 struct clk_duty {
 	unsigned int num;
 	unsigned int den;
@@ -282,6 +286,15 @@ struct clk_parent_data {
  * @num_parents: number of possible parents
  * @flags: framework-level hints and quirks
  */
+/* 保存所有时钟共用的init数据，并在clock provider和CCF之间共享
+   name：时钟名
+   ops：该时钟支持的操作
+   parent_names：字符串数组，用于保存其所有可能的parent名字
+   parent_data：字符串数组，用于保存其所有可能的parent数据
+   parent_hws：字符串数组，用于保存其所有可能的parent clk_hw指针
+   num_parents：可能的parents数量
+   flags：framework级hints和quirks
+*/
 struct clk_init_data {
 	const char		*name;
 	const struct clk_ops	*ops;
@@ -309,6 +322,13 @@ struct clk_init_data {
  * with the common clock framework. This pointer will be set to NULL once
  * a clk_register() variant is called on this clk_hw pointer.
  */
+/* 处理struct clk到其相关硬件特定结构体之间的转换。
+   clk_hw应该根据struct clk_foo声明， 并由struct clk实例设置引用计数，并使用
+   clk_foo的clk_ops
+
+   init：指向包含与common clock framework共享的init数据，当一个clk_register
+   变量在该clk_hw指针调用时，该指针被设置为NULL
+*/
 struct clk_hw {
 	struct clk_core *core;
 	struct clk *clk;
@@ -335,6 +355,12 @@ struct clk_hw {
  * * CLK_FIXED_RATE_PARENT_ACCURACY - Use the accuracy of the parent clk
  *                                    instead of what's set in @fixed_accuracy.
  */
+/* 固定频率时钟
+   hw：处理common和硬件特定的接口
+   fixed_rate：时钟的固定频率
+   fixed_accuracy：时钟在ppb中的固定精度
+   flags：硬件特定的标志
+*/
 struct clk_fixed_rate {
 	struct		clk_hw hw;
 	unsigned long	fixed_rate;
@@ -403,6 +429,7 @@ struct clk *clk_register_fixed_rate(struct device *dev, const char *name,
  * @fixed_rate: non-adjustable clock rate
  * @fixed_accuracy: non-adjustable clock accuracy
  */
+/* 注册fixed频率的时钟 */
 #define clk_hw_register_fixed_rate_with_accuracy(dev, name, parent_name,      \
 						 flags, fixed_rate,	      \
 						 fixed_accuracy)	      \

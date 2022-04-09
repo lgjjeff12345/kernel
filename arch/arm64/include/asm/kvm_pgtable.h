@@ -83,9 +83,13 @@ enum kvm_pgtable_stage2_flags {
  * @mm_ops:		Memory management callbacks.
  * @mmu:		Stage-2 KVM MMU struct. Unused for stage-1 page-tables.
  */
+/* kvm的页表 */
 struct kvm_pgtable {
+	/* 虚拟地址的bit数 */
 	u32					ia_bits;
+	/* 第一级页表 */
 	u32					start_level;
+	/* 页表的pgd地址 */
 	kvm_pte_t				*pgd;
 	struct kvm_pgtable_mm_ops		*mm_ops;
 

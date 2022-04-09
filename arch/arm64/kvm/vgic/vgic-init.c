@@ -426,6 +426,7 @@ int vgic_lazy_init(struct kvm *kvm)
  * vgic_ready() returns true if this function has succeeded.
  * @kvm: kvm struct pointer
  */
+ /* 映射VGIC的硬件资源 */
 int kvm_vgic_map_resources(struct kvm *kvm)
 {
 	struct vgic_dist *dist = &kvm->arch.vgic;

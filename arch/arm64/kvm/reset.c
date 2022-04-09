@@ -43,6 +43,7 @@ static u32 kvm_ipa_limit;
 
 unsigned int kvm_sve_max_vl;
 
+/* kvm初始化sve */
 int kvm_arm_init_sve(void)
 {
 	if (system_supports_sve()) {
@@ -131,6 +132,7 @@ int kvm_arm_vcpu_finalize(struct kvm_vcpu *vcpu, int feature)
 	return -EINVAL;
 }
 
+/* vcpu是否已完成初始化 */
 bool kvm_arm_vcpu_is_finalized(struct kvm_vcpu *vcpu)
 {
 	if (vcpu_has_sve(vcpu) && !kvm_arm_vcpu_sve_finalized(vcpu))
@@ -322,6 +324,7 @@ int kvm_set_ipa_limit(void)
 	 * Check with ARMv8.5-GTG that our PAGE_SIZE is supported at
 	 * Stage-2. If not, things will stop very quickly.
 	 */
+	/* 检查页表size是否被stage 2映射支持 */
 	switch (PAGE_SIZE) {
 	default:
 	case SZ_4K:
@@ -350,6 +353,7 @@ int kvm_set_ipa_limit(void)
 		return -EINVAL;
 	}
 
+	/* 获取ipa的limit值 */
 	kvm_ipa_limit = id_aa64mmfr0_parange_to_phys_shift(parange);
 	kvm_info("IPA Size Limit: %d bits%s\n", kvm_ipa_limit,
 		 ((kvm_ipa_limit < KVM_PHYS_SHIFT) ?

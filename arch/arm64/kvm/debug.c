@@ -81,6 +81,7 @@ void kvm_arm_init_debug(void)
  *  - Self-hosted Trace Filter controls (MDCR_EL2_TTRF)
  *  - Self-hosted Trace (MDCR_EL2_TTRF/MDCR_EL2_E2TB)
  */
+/* 配置vcpu mdcr_el2的值 */
 static void kvm_arm_setup_mdcr_el2(struct kvm_vcpu *vcpu)
 {
 	/*
@@ -120,6 +121,7 @@ static void kvm_arm_setup_mdcr_el2(struct kvm_vcpu *vcpu)
  *
  * Set vcpu initial mdcr_el2 value.
  */
+/* 设置vcpu debug功能的trap */
 void kvm_arm_vcpu_init_debug(struct kvm_vcpu *vcpu)
 {
 	preempt_disable();

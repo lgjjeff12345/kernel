@@ -681,6 +681,7 @@ struct kmap_ctrl {
 #endif
 };
 
+/* task结构体 */
 struct task_struct {
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 	/*
@@ -893,7 +894,9 @@ struct task_struct {
 
 	struct restart_block		restart_block;
 
+	/* 线程id */
 	pid_t				pid;
+	/* 进程id */
 	pid_t				tgid;
 
 #ifdef CONFIG_STACKPROTECTOR
@@ -1098,8 +1101,10 @@ struct task_struct {
 #ifdef CONFIG_LOCKDEP
 # define MAX_LOCK_DEPTH			48UL
 	u64				curr_chain_key;
+	/* 该进程持有锁的数量 */
 	int				lockdep_depth;
 	unsigned int			lockdep_recursion;
+	/* 该进程持有的锁 */
 	struct held_lock		held_locks[MAX_LOCK_DEPTH];
 #endif
 
@@ -1129,6 +1134,7 @@ struct task_struct {
 	struct capture_control		*capture_control;
 #endif
 	/* Ptrace state: */
+	/* ptrace状态信息 */
 	unsigned long			ptrace_message;
 	kernel_siginfo_t		*last_siginfo;
 
@@ -1260,6 +1266,7 @@ struct task_struct {
 	struct page_frag		task_frag;
 
 #ifdef CONFIG_TASK_DELAY_ACCT
+	/* 任务的delay信息 */
 	struct task_delay_info		*delays;
 #endif
 
@@ -1477,6 +1484,7 @@ static inline pid_t task_pid_vnr(struct task_struct *tsk)
 }
 
 
+/* 获取该task的进程id */
 static inline pid_t task_tgid_nr(struct task_struct *tsk)
 {
 	return tsk->tgid;
